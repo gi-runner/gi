@@ -47,9 +47,10 @@ func cucumberOf(doc Document) []map[string]any {
 					"line":    st.Line,
 					"result":  result,
 				}
-				if len(st.Embeds) > 0 {
-					embeddings := make([]any, len(st.Embeds))
-					for i, item := range st.Embeds {
+				items := stepEmbeds(st)
+				if len(items) > 0 {
+					embeddings := make([]any, len(items))
+					for i, item := range items {
 						embeddings[i] = map[string]any{
 							"data":      base64.StdEncoding.EncodeToString(item.Data),
 							"mime_type": item.Mime,
@@ -106,6 +107,15 @@ func cucumberTags(tags []string) []any {
 			tag = "@" + tag
 		}
 		out = append(out, map[string]any{"name": tag})
+	}
+	return out
+}
+
+// Cucumber has no nested call steps. Keep their evidence on the enclosing call.
+func stepEmbeds(st engine.StepResult) []engine.Embed {
+	out := append([]engine.Embed(nil), st.Embeds...)
+	for _, child := range st.Calls {
+		out = append(out, stepEmbeds(child)...)
 	}
 	return out
 }

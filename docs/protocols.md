@@ -15,7 +15,7 @@ WebSocket, gRPC, Kafka, and the browser are opened from the scenario. The engine
 
 | Kind | Spec | Methods |
 | --- | --- | --- |
-| `websocket` or `ws` | `{ url }` | `send` and `receive` one text frame. |
+| `websocket` or `ws` | `{ url }` | `send` and `receive` text or binary messages. |
 | `grpc` | `{ addr }` | `call(method, body)` for a unary method. `open(method)` for a stream. Plaintext by default; optional TLS and metadata are described below. |
 | `kafka` | `{ brokers, topic }` | `send` and `receive` one record on that topic. `brokers` is a host, a comma-separated list, or a list. Optional SASL and TLS are described below. |
 
@@ -58,9 +58,9 @@ The link closes when the scenario ends.
 
 ### Actions and locators
 
-After opening `driver`, global helpers and driver methods support `click`, `input`, `clear`, `select`, `focus`, `scroll`, `text`, `html`, `value`, `attribute`, `exists`, `enabled`, `locate`, `locateAll`, `waitFor`, `waitForText`, `waitForEnabled`, `waitForUrl`, string `waitUntil`, `script` and `screenshot`. Navigation includes back, forward and refresh; `driver.url` and `driver.title` are readable properties. Locators support CSS, XPath and single-element Karate text selectors. Located elements expose fluent actions and read properties.
+After opening `driver`, global helpers and driver methods support `click`, `input`, `inputFile`, `clear`, `select`, `focus`, `scroll`, `text`, `html`, `value`, `attribute`, `exists`, `enabled`, `locate`, `locateAll`, `waitFor`, `waitForText`, `waitForEnabled`, `waitForUrl`, string `waitUntil`, `script` and `screenshot`. Navigation includes back, forward and refresh; `driver.url` and `driver.title` are readable properties. Locators support CSS, XPath and single-element Karate text selectors. Located elements expose fluent actions and read properties.
 
-Screenshots return PNG bytes and are attached to the step that took them. Shared calls retain browser ownership; isolated calls borrow an existing page without closing it. Frames, dialogs, uploads, providers, interception, full browser cookie support and the full fluent retry/action API remain incomplete.
+Screenshots return PNG bytes and are attached to the step that took them. Shared calls retain browser ownership; isolated calls borrow an existing page without closing it. Frames, dialogs, providers, interception, full browser cookie support and the full fluent retry/action API remain incomplete.
 
 ## gRPC TLS and metadata
 
@@ -79,3 +79,29 @@ For private trust or mutual TLS, use `tls: { caCert: '/path/ca.pem', serverName:
 
 `mechanism` is `PLAIN`, `SCRAM-SHA-256`, or `SCRAM-SHA-512`. It defaults to `PLAIN`. `username` and `password` are required when `sasl` is set. TLS uses the same shape as gRPC: `true`, or `{ caCert, serverName, cert, key }`. Consumer groups and offset controls are not implemented.
 
+
+## WebSocket options
+
+```gherkin
+* def socket = gi.channel('websocket', { url: wsUrl, headers: { Authorization: 'Bearer ' + token }, subprotocols: ['events'], maxMessageSize: 1048576 })
+* socket.send('hello')
+* def text = socket.receive()
+* socket.send(read('payload.bin'))
+* def bytes = socket.receive()
+```
+
+Strings use text messages; byte values use binary messages. `receive()` returns a string or bytes according to the incoming message type. Handshake `headers` accepts scalar or list values. `subprotocols` is a list of strings. `maxMessageSize` is an optional positive integer in bytes; otherwise the WebSocket library's default applies. An oversized message fails receive.
+
+## Browser uploads
+
+```gherkin
+* driver pageUrl
+* inputFile('#document', 'report.pdf')
+* driver.inputFile('#photos', ['front.png', 'back.png'])
+* locate('#document').inputFile('replacement.pdf')
+* inputFile('#document', [])
+```
+
+Upload paths resolve like `read()`: relative to the feature or project root, with `this:`, `classpath:` and `file:` prefixes. Files must exist and be regular files. Lists support multiple inputs; an empty list clears the selection. CSS, XPath and single-element text locators use the same lookup as other actions.
+
+gi preserves Chrome's default sandbox settings. On a restricted CI host that cannot run it, `GI_CHROME_NO_SANDBOX=true` explicitly disables it. The Linux CI job uses this workaround; regular runs do not disable the sandbox automatically.

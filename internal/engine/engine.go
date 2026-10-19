@@ -443,7 +443,6 @@ func runScenario(ctx context.Context, f *feature.File, sc feature.Scenario, opt 
 			return res
 		}
 	}
-	ex.bind()
 	defer func() {
 		defer stop()
 		if finish != nil {
@@ -454,6 +453,12 @@ func runScenario(ctx context.Context, f *feature.File, sc feature.Scenario, opt 
 			res.Error = cerr.Error()
 		}
 	}()
+	if err := ex.bind(); err != nil {
+		res.Passed = false
+		res.Canceled = ctx.Err() != nil
+		res.Error = err.Error()
+		return res
+	}
 	if err := ex.evalSuite(); err != nil {
 		res.Canceled = errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 		res.Passed = false

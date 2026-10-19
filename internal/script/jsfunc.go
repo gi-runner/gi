@@ -138,8 +138,10 @@ func (v *VM) callCached(f jsFunc, args []sobek.Value) sobek.Value {
 	// Runtime helpers describe the current caller, not a completed scenario.
 	bindings := origin.bindings
 	if origin != v {
-		origin.Bind(v.bindings)
-		defer origin.Bind(bindings)
+		if err := origin.Bind(v.bindings); err != nil {
+			panic(v.rt.NewGoError(err))
+		}
+		defer func() { _ = origin.Bind(bindings) }()
 	}
 	fn, ok := sobek.AssertFunction(f.v)
 	if !ok {
@@ -175,12 +177,24 @@ func (v *VM) callCached(f jsFunc, args []sobek.Value) sobek.Value {
 }
 
 func (origin *VM) evalCached(caller *VM, f jsFunc, args []sobek.Value) (any, bool, error) {
+	if err := origin.ctx.Err(); err != nil {
+		return nil, false, err
+	}
+	if err := caller.ctx.Err(); err != nil {
+		return nil, false, err
+	}
+	// A handed-off call executes on the parked owner's goroutine but still
+	// belongs to the caller's deadline. The outer owner retains its lease.
+	stop := origin.arm(caller.ctx, func() {})
+	defer stop()
 	restore := origin.install(f.env)
 	defer restore()
 	bindings := origin.bindings
 	if origin != caller {
-		origin.Bind(caller.bindings)
-		defer origin.Bind(bindings)
+		if err := origin.Bind(caller.bindings); err != nil {
+			return nil, false, err
+		}
+		defer func() { _ = origin.Bind(bindings) }()
 	}
 	fn, ok := sobek.AssertFunction(f.v)
 	if !ok {

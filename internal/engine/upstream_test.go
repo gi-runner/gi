@@ -1,6 +1,10 @@
 package engine_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -10,7 +14,7 @@ import (
 )
 
 func TestPinnedUpstreamFeatures(t *testing.T) {
-	for _, name := range []string{"copy/copy.feature", "xml/xml-call.feature"} {
+	for _, name := range []string{"copy/copy.feature", "xml/xml-call.feature", "config/config.feature"} {
 		for _, jobs := range []int{1, 4} {
 			t.Run(name+"/"+strconv.Itoa(jobs), func(t *testing.T) {
 				path := filepath.Join("..", "..", "testdata", "karate", filepath.FromSlash(name))
@@ -30,6 +34,41 @@ func TestPinnedUpstreamFeatures(t *testing.T) {
 					}
 				}
 			})
+		}
+	}
+}
+
+func TestUpstreamFixtureManifest(t *testing.T) {
+	root := filepath.Join("..", "..", "testdata", "karate")
+	raw, err := os.ReadFile(filepath.Join(root, "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		Commit string `json:"commit"`
+		Files  map[string]struct {
+			Source string `json:"source"`
+			SHA256 string `json:"sha256"`
+		} `json:"files"`
+	}
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Commit) != 40 || len(manifest.Files) == 0 {
+		t.Fatal("missing upstream commit or fixture inventory")
+	}
+	for name, entry := range manifest.Files {
+		raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(name)))
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		sum := sha256.Sum256(raw)
+		if hex.EncodeToString(sum[:]) != entry.SHA256 {
+			t.Errorf("fixture %s differs from pinned upstream contents", name)
+		}
+		if entry.Source == "" {
+			t.Errorf("fixture %s has no upstream path", name)
 		}
 	}
 }

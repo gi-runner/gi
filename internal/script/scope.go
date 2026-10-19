@@ -190,7 +190,7 @@ func (v *VM) Scope(shared bool) func() {
 				}
 			}
 		}
-		v.Bind(bindings)
+		_ = v.Bind(bindings)
 	}
 }
 

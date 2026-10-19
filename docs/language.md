@@ -47,6 +47,7 @@ Each scenario has its own runtime. `vu` and `iter` are `1` in a functional run. 
 
 | Member | Behavior |
 | --- | --- |
+| `gi.config` | Detached snapshot of effective `timeout`, `readTimeout`, `connectTimeout`, `followRedirects` and `strictResponseParsing` settings. Callback configuration and other Java settings are not included. |
 | `gi.env` | The value of `--env`. |
 | `gi.read(path)` | Same as the global `read`. |
 | `gi.get(name)` / `gi.set(name, value)` | Read or write a variable. `gi.set` is visible to later steps, including `match`. |

@@ -25,7 +25,7 @@ import (
 	"github.com/gi-runner/gi/internal/suite"
 )
 
-const version = "0.1.0"
+const version = "0.2.0"
 
 func Main(args []string) int {
 	if len(args) == 0 {

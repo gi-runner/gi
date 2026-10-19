@@ -17,12 +17,13 @@ import (
 	"github.com/gi-runner/gi/internal/value"
 )
 
-func (e *exec) bind() {
+func (e *exec) bind() error {
 	root := filepath.Dir(e.file.Path)
 	if e.opt.Suite != nil && e.opt.Suite.Root != "" {
 		root = e.opt.Suite.Root
 	}
-	e.vm.Bind(script.Bindings{
+	return e.vm.Bind(script.Bindings{
+		Config:     e.configuration,
 		Env:        e.opt.Env,
 		Root:       root,
 		FeatureDir: filepath.Dir(e.file.Path),

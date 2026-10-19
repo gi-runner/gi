@@ -29,6 +29,8 @@ jobs:
       - run: go mod verify
       - run: go vet ./...
       - run: go test -race ./...
+        env:
+          GI_CHROME_NO_SANDBOX: ${{ runner.os == 'Linux' && 'true' || 'false' }}
       - name: Build native CLI
         shell: bash
         run: CGO_ENABLED=0 go build ./cmd/gi

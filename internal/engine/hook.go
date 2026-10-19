@@ -36,7 +36,6 @@ func fileHook(ctx context.Context, e *exec, name string, res *ScenarioResult) {
 		res.Error = err.Error()
 		return
 	}
-	e.bind()
 	defer func() {
 		defer stop()
 		if err := e.release(); err != nil {
@@ -48,6 +47,12 @@ func fileHook(ctx context.Context, e *exec, name string, res *ScenarioResult) {
 			}
 		}
 	}()
+	if err := e.bind(); err != nil {
+		res.Passed = false
+		res.Canceled = ctx.Err() != nil
+		res.Error = err.Error()
+		return
+	}
 	if sr, ok := e.hook(name); ok {
 		if !res.ReportDisabled {
 			res.Steps = append(res.Steps, sr)

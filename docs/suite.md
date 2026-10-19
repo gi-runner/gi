@@ -107,6 +107,6 @@ Neither hook runs inside a called feature or inside `@setup`.
 
 ## Additional lifecycle and scheduling
 
-`afterFeature` runs once after a feature. `afterScenarioOutline` runs after the last selected outline row in serial mode; it is omitted during parallel scenario execution. `onStepFailure` receives information with `proceed()` and `stop()` decisions.
+`afterFeature` runs once after a feature. `afterScenarioOutline` runs once after all selected rows of an outline finish, including parallel execution. `onStepFailure` receives information with `proceed()` and `stop()` decisions.
 
 `@fail` expects scenario failure. `@lock=name` serializes scenarios sharing that name; `@lock=*` excludes all other scheduled scenarios in the suite. Lock waiting respects cancellation. `@report=false` suppresses step detail and print output, including called features. Runtime variables remain available to embedding callers. `@env` and `@envnot` accept comma-separated environment names.

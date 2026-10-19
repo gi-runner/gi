@@ -116,3 +116,50 @@ Scenario: browser
 		}
 	}
 }
+
+func TestFeatureFileUpload(t *testing.T) {
+	if !chromePresent() {
+		t.Skip("chrome is not installed")
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<!doctype html><input id="one" type="file"><input id="many" type="file" multiple>`))
+	}))
+	defer server.Close()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "first.txt"), []byte("first payload"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "second.txt"), []byte("second payload"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := feature.Parse(filepath.Join(dir, "upload.feature"), `Feature: uploads
+Scenario: file inputs
+* driver baseUrl
+* driver.inputFile('#one','first.txt')
+* match script("document.querySelector('#one').files[0].name") == 'first.txt'
+* match script("document.querySelector('#one').files[0].size") == 13
+* inputFile('//*[@id="many"]',['first.txt','second.txt'])
+* match script("Array.from(document.querySelector('#many').files).map(f => f.name)") == ['first.txt','second.txt']
+* locate('#one').inputFile('second.txt')
+* match script("document.querySelector('#one').files[0].name") == 'second.txt'
+* inputFile('#one',[])
+* match script("document.querySelector('#one').files.length") == 0
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	res, err := engine.RunFile(ctx, f, engine.Options{NewPage: Open, Vars: map[string]any{"baseUrl": server.URL}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Passed() {
+		for _, sc := range res.Scenarios {
+			if !sc.Passed {
+				t.Error(sc.Error)
+			}
+		}
+	}
+}

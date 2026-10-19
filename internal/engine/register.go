@@ -42,7 +42,7 @@ func registeredHelpers() map[string]func([]any) (any, error) {
 
 func builtinHelper(name string) bool {
 	switch name {
-	case "abort", "append", "appendTo", "call", "callonce", "callSingle", "channel", "configure",
+	case "abort", "append", "appendTo", "call", "callonce", "callSingle", "channel", "config", "configure",
 		"distinct", "embed", "env", "fail", "feature", "filter", "filterKeys", "forEach", "fromJson", "fromString",
 		"get", "info", "jsonPath", "keysOf", "listen", "log", "lowerCase", "map", "mapWithKey", "merge", "pageText",
 		"pause", "pretty", "range", "read", "readAsBytes", "readAsString", "remove", "repeat", "scenario",

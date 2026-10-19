@@ -2,6 +2,8 @@ package engine_test
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -109,4 +111,54 @@ Scenario: isolation
 * def n = result.sign(2)
 * match n == 3
 `, engine.Options{})
+}
+
+func TestInputFileResolutionAndValidation(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "note.txt")
+	if err := os.WriteFile(file, []byte("note"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, ref := range []string{"note.txt", "this:note.txt", "classpath:note.txt", "file:" + file} {
+		t.Run(ref, func(t *testing.T) {
+			page := &uploadPage{}
+			runRelease(t, filepath.Join(dir, "upload.feature"), "Feature: upload\nScenario: upload\n* driver 'http://page.test'\n* inputFile('#file', ref)\n", engine.Options{Vars: map[string]any{"ref": ref}, NewPage: func(context.Context) (engine.Page, error) { return page, nil }})
+			if len(page.files) != 1 || page.files[0] != file {
+				t.Fatalf("resolved files: %v", page.files)
+			}
+		})
+	}
+	for _, ref := range []string{"missing.txt", "this:."} {
+		t.Run(ref, func(t *testing.T) {
+			page := &uploadPage{}
+			f, err := feature.Parse(filepath.Join(dir, "invalid.feature"), "Feature: upload\nScenario: invalid\n* driver 'http://page.test'\n* inputFile('#file',ref)\n")
+			if err != nil {
+				t.Fatal(err)
+			}
+			res, err := engine.RunFile(t.Context(), f, engine.Options{Vars: map[string]any{"ref": ref}, NewPage: func(context.Context) (engine.Page, error) { return page, nil }})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Passed() || page.files != nil {
+				t.Fatalf("invalid file reached browser: %#v", res)
+			}
+		})
+	}
+}
+
+type uploadPage struct {
+	fakePage
+	files []string
+}
+
+func (p *uploadPage) Action(_ context.Context, name string, args []any) (any, error) {
+	if name != "inputFile" {
+		return nil, fmt.Errorf("unexpected action %s", name)
+	}
+	files, ok := args[1].([]string)
+	if !ok {
+		return nil, fmt.Errorf("unexpected upload files %T", args[1])
+	}
+	p.files = files
+	return true, nil
 }

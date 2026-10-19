@@ -95,3 +95,27 @@ func cucumberValue[T any](t *testing.T, raw any) T {
 	}
 	return got
 }
+
+func TestCucumberKeepsNestedCallAttachments(t *testing.T) {
+	doc := Document{Features: []engine.FileResult{{Name: "calls", Scenarios: []engine.ScenarioResult{{Passed: true, Steps: []engine.StepResult{{
+		Passed: true, Text: "call child",
+		Embeds: []engine.Embed{{Name: "parent", Mime: "text/plain", Data: []byte("parent")}},
+		Calls:  []engine.StepResult{{Passed: true, Embeds: []engine.Embed{{Name: "child", Mime: "image/png", Data: []byte{0, 255}}}, Calls: []engine.StepResult{{Passed: true, Embeds: []engine.Embed{{Name: "grandchild", Mime: "text/plain", Data: []byte("deep")}}}}}},
+	}}}}}}}
+	features := cucumberOf(doc)
+	elements := cucumberValue[[]any](t, features[0]["elements"])
+	scenario := cucumberValue[map[string]any](t, elements[0])
+	steps := cucumberValue[[]any](t, scenario["steps"])
+	step := cucumberValue[map[string]any](t, steps[0])
+	embeddings := cucumberValue[[]any](t, step["embeddings"])
+	if len(embeddings) != 3 {
+		t.Fatalf("lost nested evidence: %#v", embeddings)
+	}
+	want := []struct{ name, data, mime string }{{"parent", "cGFyZW50", "text/plain"}, {"child", "AP8=", "image/png"}, {"grandchild", "ZGVlcA==", "text/plain"}}
+	for i, item := range embeddings {
+		got := cucumberValue[map[string]any](t, item)
+		if got["name"] != want[i].name || got["data"] != want[i].data || got["mime_type"] != want[i].mime {
+			t.Fatalf("attachment %d: %#v", i, got)
+		}
+	}
+}

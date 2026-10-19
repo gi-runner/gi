@@ -54,13 +54,15 @@ func outlineRows(ctx context.Context, f *feature.File, expr string, opt Options)
 			return nil, err
 		}
 	}
-	ex.bind()
 	defer func() {
 		defer stop()
 		if cerr := ex.release(); cerr != nil && err == nil {
 			err = cerr
 		}
 	}()
+	if err := ex.bind(); err != nil {
+		return nil, err
+	}
 	if err := ex.evalSuite(); err != nil {
 		return nil, err
 	}

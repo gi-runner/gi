@@ -10,7 +10,7 @@ import (
 // Element is a locator, not a DOM node or a cross-runtime browser handle.
 type Element struct{ Locator string }
 
-var driverMethods = []string{"click", "input", "clear", "select", "focus", "scroll", "text", "html", "value", "attribute", "exists", "enabled", "locate", "locateAll", "waitFor", "waitForText", "waitForEnabled", "waitForUrl", "waitUntil", "script", "screenshot", "back", "forward", "refresh", "quit"}
+var driverMethods = []string{"click", "input", "inputFile", "clear", "select", "focus", "scroll", "text", "html", "value", "attribute", "exists", "enabled", "locate", "locateAll", "waitFor", "waitForText", "waitForEnabled", "waitForUrl", "waitUntil", "script", "screenshot", "back", "forward", "refresh", "quit"}
 
 func (v *VM) driverCall(name string, args []any) sobek.Value {
 	if v.bindings.Driver == nil {
@@ -70,7 +70,7 @@ func (v *VM) elementObject(locator string) sobek.Value {
 	obj := v.rt.NewObject()
 	_ = obj.Set("__gi", true)
 	_ = obj.Set("locator", locator)
-	for _, name := range []string{"click", "input", "clear", "select", "focus", "scroll", "attribute", "script", "waitFor", "waitForText", "waitForEnabled"} {
+	for _, name := range []string{"click", "input", "inputFile", "clear", "select", "focus", "scroll", "attribute", "script", "waitFor", "waitForText", "waitForEnabled"} {
 		_ = obj.Set(name, v.driverFunction(name, []any{locator}))
 	}
 	for _, property := range []struct{ name, action string }{{"text", "text"}, {"html", "html"}, {"value", "value"}, {"present", "exists"}, {"enabled", "enabled"}} {
