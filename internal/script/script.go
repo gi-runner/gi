@@ -432,6 +432,9 @@ func (v *VM) arm(ctx context.Context, release func()) func() { //nolint:contextc
 			<-done
 		}
 		v.rt.ClearInterrupt()
+		if err := previous.Err(); err != nil {
+			v.rt.Interrupt(err)
+		}
 		v.ctx = previous
 		release()
 		v.sched.Lock()

@@ -64,11 +64,15 @@ func TestWebSocketChannel(t *testing.T) {
 			return
 		}
 		defer func() { _ = c.Close(websocket.StatusNormalClosure, "") }()
-		_, b, err := c.Read(r.Context())
-		if err != nil {
-			return
+		for range 2 {
+			kind, b, err := c.Read(r.Context())
+			if err != nil {
+				return
+			}
+			if err := c.Write(r.Context(), kind, b); err != nil {
+				return
+			}
 		}
-		_ = c.Write(r.Context(), websocket.MessageText, b)
 	}))
 	defer srv.Close()
 	res, err := engine.RunFile(context.Background(), parse(t, `
@@ -78,8 +82,12 @@ Scenario: echo
 * def sent = sock.send('ping')
 * def got = sock.receive()
 * match got == 'ping'
+* sock.send(binary)
+* def data = sock.receive()
+* assert data.length == 3
+* assert data[0] == 0 && data[1] == 255 && data[2] == 42
 `), engine.Options{
-		Vars: map[string]any{"wsUrl": "ws" + strings.TrimPrefix(srv.URL, "http")},
+		Vars: map[string]any{"wsUrl": "ws" + strings.TrimPrefix(srv.URL, "http"), "binary": []byte{0, 255, 42}},
 		Dial: func(ctx context.Context, kind string, spec map[string]any) (engine.Link, error) {
 			return wsx.Dial(ctx, spec)
 		},

@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/gi-runner/gi/internal/script"
+	"github.com/gi-runner/gi/internal/suite"
 	"github.com/gi-runner/gi/internal/value"
 )
 
@@ -49,6 +52,36 @@ func (e *exec) driverCall(name string, args []any) (any, error) {
 		e.page = nil
 		return nil, err
 	}
+	if name == "inputFile" {
+		if len(args) != 2 {
+			return nil, errors.New("inputFile requires a locator and a path or list of paths")
+		}
+		refs, list := value.AsSlice(args[1])
+		if !list {
+			refs = []any{args[1]}
+		}
+		paths := make([]string, len(refs))
+		for i, ref := range refs {
+			path, ok := ref.(string)
+			if !ok || path == "" {
+				return nil, errors.New("inputFile paths must be nonempty strings")
+			}
+			path = suite.Resolve(e.root(), filepath.Dir(e.file.Path), path)
+			abs, err := filepath.Abs(path)
+			if err != nil {
+				return nil, err
+			}
+			info, err := os.Stat(abs)
+			if err != nil {
+				return nil, fmt.Errorf("inputFile %s: %w", abs, err)
+			}
+			if !info.Mode().IsRegular() {
+				return nil, fmt.Errorf("inputFile %s is not a regular file", abs)
+			}
+			paths[i] = abs
+		}
+		args = []any{args[0], paths}
+	}
 	ctx, cancel := e.op(e.ctx)
 	defer cancel()
 	var got any
@@ -74,7 +107,7 @@ func (e *exec) driverCall(name string, args []any) (any, error) {
 		return nil, err
 	}
 	switch name {
-	case "click", "input", "clear", "select", "focus", "scroll", "locate", "waitFor", "waitForText", "waitForEnabled":
+	case "click", "input", "inputFile", "clear", "select", "focus", "scroll", "locate", "waitFor", "waitForText", "waitForEnabled":
 		return script.Element{Locator: text(0)}, nil
 	case "locateAll":
 		items, ok := value.AsSlice(value.Normalize(got))

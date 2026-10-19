@@ -25,6 +25,7 @@ type Call struct {
 }
 
 type Bindings struct {
+	Config     func() map[string]any
 	Driver     func(string, []any) (any, error)
 	Call       func(Call) (any, error)
 	Env        string
@@ -50,14 +51,14 @@ type Bindings struct {
 	Helpers    map[string]func([]any) (any, error)
 }
 
-func (v *VM) Bind(b Bindings) {
+func (v *VM) Bind(b Bindings) error {
 	v.bindings = b
 	v.root = b.Root
 	v.featureDir = b.FeatureDir
 	if v.karate != nil {
 		_ = v.karate.Set("env", b.Env)
 		v.bindRuntime()
-		return
+		return nil
 	}
 	read := func(call sobek.FunctionCall) sobek.Value {
 		val, err := v.read(call.Argument(0).String())
@@ -159,10 +160,13 @@ func (v *VM) Bind(b Bindings) {
 	}
 	_ = v.rt.Set("gi", obj)
 	_ = v.rt.Set("karate", obj)
-	v.bindHelpers(obj)
+	if err := v.bindHelpers(obj); err != nil {
+		return err
+	}
 	v.bindDriver()
 	v.bindRuntime()
 	_ = v.rt.Set("read", read)
+	return nil
 }
 
 func (v *VM) EvalConfig(src string) error {

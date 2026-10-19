@@ -24,7 +24,9 @@ func NewMockRuntime(ctx context.Context, f *feature.File, prepare func(*script.V
 		return nil, err
 	}
 	defer stop()
-	ex.bind()
+	if err := ex.bind(); err != nil {
+		return nil, err
+	}
 	if prepare != nil {
 		prepare(ex.vm)
 	}

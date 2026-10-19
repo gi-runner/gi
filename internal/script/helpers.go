@@ -27,7 +27,7 @@ func mustCompileHelpers() *sobek.Program {
 	return p
 }
 
-func (v *VM) bindHelpers(obj *sobek.Object) {
+func (v *VM) bindHelpers(obj *sobek.Object) error {
 	v.bindPathHelpers(obj)
 	_ = obj.Set("uuid", v.rt.Get("uuid"))
 	_ = obj.Set("urlEncode", url.QueryEscape)
@@ -101,6 +101,7 @@ func (v *VM) bindHelpers(obj *sobek.Object) {
 	_ = obj.Set("readAsBytes", v.Bytes)
 	_ = obj.Set("toBytes", func(x sobek.Value) []byte { return []byte(x.String()) })
 	if _, err := v.rt.RunProgram(helperProgram); err != nil {
-		panic(fmt.Sprintf("invalid built-in helpers: %v", err))
+		return fmt.Errorf("initialize built-in helpers: %w", err)
 	}
+	return nil
 }

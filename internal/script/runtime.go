@@ -165,6 +165,7 @@ func (v *VM) bindRuntime() {
 		}
 		return v.rt.ToValue(true)
 	})
+	v.accessor("config", v.bindings.Config)
 	v.accessor("info", v.bindings.Info)
 	v.accessor("scenario", v.bindings.Scenario)
 	v.accessor("feature", v.bindings.Feature)

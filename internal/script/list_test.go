@@ -9,7 +9,9 @@ import (
 
 func TestListHelpers(t *testing.T) {
 	vm := script.New()
-	vm.Bind(script.Bindings{})
+	if err := vm.Bind(script.Bindings{}); err != nil {
+		t.Fatal(err)
+	}
 	names, err := vm.Eval("gi.map([{name:'Ada'},{name:'Grace'}], function(x){ return x.name })")
 	if err != nil {
 		t.Fatal(err)
@@ -50,7 +52,9 @@ func TestListHelpers(t *testing.T) {
 
 func TestCollectionCompatibility(t *testing.T) {
 	vm := script.New()
-	vm.Bind(script.Bindings{})
+	if err := vm.Bind(script.Bindings{}); err != nil {
+		t.Fatal(err)
+	}
 	for _, expr := range []string{
 		"karate.distinct([{a:1,b:2},{b:2,a:1}]).length === 1",
 		"karate.filterKeys({a:1,b:2,c:3}, 'a', 'b').b === 2",

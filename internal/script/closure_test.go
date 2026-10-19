@@ -128,3 +128,79 @@ func TestCachedClosureCallsAreSerialized(t *testing.T) {
 		t.Fatalf("counter values: %v", seen)
 	}
 }
+
+func TestParkedCachedCallUsesCallerDeadline(t *testing.T) {
+	origin := New()
+	fn, err := origin.Eval("function(){ while(true){} }")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed := origin.Seal(fn)
+	ownerCtx, cancelOwner := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancelOwner()
+	ready := make(chan struct{})
+	ownerDone := make(chan struct{})
+	origin.SetFunction("hold", func(sobek.FunctionCall) sobek.Value {
+		signalled := false
+		err := origin.Park(func(wake <-chan struct{}) (bool, error) {
+			if !signalled {
+				close(ready)
+				signalled = true
+			}
+			select {
+			case <-wake:
+				return true, nil
+			case <-ownerCtx.Done():
+				return false, ownerCtx.Err()
+			}
+		})
+		if err != nil {
+			panic(origin.rt.NewGoError(err))
+		}
+		return sobek.Undefined()
+	})
+	go func() {
+		defer close(ownerDone)
+		stop, err := origin.Watch(ownerCtx)
+		if err != nil {
+			return
+		}
+		defer stop()
+		_, _ = origin.Eval("hold()")
+	}()
+	defer func() { cancelOwner(); <-ownerDone }()
+	<-ready
+	caller := New()
+	ctx, cancel := context.WithTimeout(t.Context(), 40*time.Millisecond)
+	defer cancel()
+	stop, err := caller.Watch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	caller.Set("f", sealed)
+	started := time.Now()
+	_, err = caller.Eval("f()")
+	if err == nil {
+		t.Fatal("cached infinite loop succeeded")
+	}
+	if time.Since(started) > 500*time.Millisecond {
+		t.Fatal("parked cached call ignored caller deadline")
+	}
+}
+
+func TestCancelledInitializationReturnsError(t *testing.T) {
+	v := New()
+	ctx, cancel := context.WithCancel(t.Context())
+	stop, err := v.Watch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	cancel()
+	// Force the same interruption that can arrive during helper initialization.
+	v.rt.Interrupt(context.Canceled)
+	if err := v.Bind(Bindings{}); err == nil {
+		t.Fatal("cancelled helper initialization succeeded")
+	}
+}

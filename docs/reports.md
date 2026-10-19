@@ -25,7 +25,7 @@ JSON is the same structure as the HTML view. Durations are milliseconds. The tim
 
 Cucumber JSON is one feature object per file. Step duration is nanoseconds. A passed step is `passed`. A failed step is `failed` and carries `error_message`. Expected failures accepted by `@fail` export as passed. Scenario failures without a failed step (including an unexpectedly passing `@fail`) export a failed `after` hook so consumers preserve the runner outcome.
 
-`karate.embed(value, mime, name)` and `screenshot()` add attachments to the step that produced them. The same applies to `beforeScenario`, `afterScenario`, `afterScenarioOutline`, `afterFeature`, and `onStepFailure`: the attachment stays on that hook step. The HTML report shows text inline and images inline. JSON stores the bytes as base64. Cucumber JSON stores them on the step as `embeddings`.
+`karate.embed(value, mime, name)` and `screenshot()` add attachments to the step that produced them. The same applies to `beforeScenario`, `afterScenario`, `afterScenarioOutline`, `afterFeature`, and `onStepFailure`: the attachment stays on that hook step. The HTML report shows text inline and images inline. JSON stores the bytes as base64. Cucumber JSON stores them on the step as `embeddings`. Attachments from nested feature calls are included on the enclosing call step.
 
 ## OpenTelemetry
 

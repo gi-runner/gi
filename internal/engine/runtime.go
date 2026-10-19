@@ -283,3 +283,15 @@ func (e *exec) setXMLValue(doc *xml.Document, path, expr string) error {
 	}
 	return doc.Set(path, value.Sprint(val))
 }
+
+// configuration returns a detached snapshot of the effective HTTP settings.
+// Callback configuration and unimplemented Java settings are not exposed.
+func (e *exec) configuration() map[string]any {
+	return map[string]any{
+		"timeout":               e.sess.timeout.Milliseconds(),
+		"readTimeout":           e.sess.timeout.Milliseconds(),
+		"connectTimeout":        e.sess.transport.ConnectTimeout.Milliseconds(),
+		"followRedirects":       e.sess.follow,
+		"strictResponseParsing": e.sess.strictParsing,
+	}
+}

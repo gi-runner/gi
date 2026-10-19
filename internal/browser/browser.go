@@ -2,7 +2,7 @@ package browser
 
 import (
 	"context"
-	"runtime"
+	"os"
 	"sync"
 
 	"github.com/chromedp/chromedp"
@@ -21,8 +21,8 @@ func Open(ctx context.Context) (engine.Page, error) {
 		chromedp.Flag("headless", true),
 		chromedp.Flag("disable-gpu", true),
 	)
-	// Ubuntu 24.04 blocks Chrome's user-namespace sandbox.
-	if runtime.GOOS == "linux" {
+	// Restricted CI hosts may need an explicit sandbox opt-out.
+	if os.Getenv("GI_CHROME_NO_SANDBOX") == "true" {
 		opts = append(opts, chromedp.NoSandbox)
 	}
 	alloc, cancelAlloc := chromedp.NewExecAllocator(ctx, opts...)

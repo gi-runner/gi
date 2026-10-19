@@ -24,6 +24,10 @@
     "copy/copy-called-nested.feature": {
       "source": "karate-core/src/test/resources/io/karatelabs/core/copy/copy-called-nested.feature",
       "sha256": "f52b2477861f92b34b161ddd4c0ab28c79231b77c719ad0f7ef7e20343a8d91a"
+    },
+    "config/config.feature": {
+      "source": "karate-core/src/test/resources/io/karatelabs/core/parallel/config-test.feature",
+      "sha256": "550304198adf65aadbbdeaa03b5d453a158db6956274f89a9b8aa100039017fb"
     }
   }
 }

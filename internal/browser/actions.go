@@ -57,6 +57,18 @@ func (p *page) Action(ctx context.Context, name string, args []any) (any, error)
 		return eval("(function(e){if(!e)throw Error('element not found: '+" + strconv.Quote(selector) + ");" + code + "})(" + node + ")")
 	}
 	switch name {
+	case "inputFile":
+		if len(args) != 2 {
+			return nil, errors.New("inputFile requires a locator and file paths")
+		}
+		paths, ok := args[1].([]string)
+		if !ok {
+			return nil, errors.New("inputFile expects resolved file paths")
+		}
+		if len(paths) == 0 {
+			return element("e.value='';e.dispatchEvent(new Event('change',{bubbles:true}));return true")
+		}
+		return runAction(ctx, p, chromedp.SetUploadFiles(chromedp.JSPath(node), paths))
 	case "getUrl":
 		return runAction(ctx, p, chromedp.Location())
 	case "title":
