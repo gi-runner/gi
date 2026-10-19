@@ -1,6 +1,7 @@
 package engine_test
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -63,7 +64,7 @@ func TestUpstreamFixtureManifest(t *testing.T) {
 			t.Error(err)
 			continue
 		}
-		sum := sha256.Sum256(raw)
+		sum := sha256.Sum256(bytes.ReplaceAll(raw, []byte("\r\n"), []byte("\n")))
 		if hex.EncodeToString(sum[:]) != entry.SHA256 {
 			t.Errorf("fixture %s differs from pinned upstream contents", name)
 		}
