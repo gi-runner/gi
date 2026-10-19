@@ -1,2 +1,0 @@
-"$(go env GOPATH)/bin/golangci-lint" run
-0 issues.
