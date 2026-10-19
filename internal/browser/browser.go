@@ -2,6 +2,7 @@ package browser
 
 import (
 	"context"
+	"runtime"
 	"sync"
 
 	"github.com/chromedp/chromedp"
@@ -16,12 +17,15 @@ type page struct {
 }
 
 func Open(ctx context.Context) (engine.Page, error) {
-	alloc, cancelAlloc := chromedp.NewExecAllocator(ctx,
-		append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.Flag("headless", true),
-			chromedp.Flag("disable-gpu", true),
-		)...,
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("headless", true),
+		chromedp.Flag("disable-gpu", true),
 	)
+	// Ubuntu 24.04 blocks Chrome's user-namespace sandbox.
+	if runtime.GOOS == "linux" {
+		opts = append(opts, chromedp.NoSandbox)
+	}
+	alloc, cancelAlloc := chromedp.NewExecAllocator(ctx, opts...)
 	tab, cancelTab := chromedp.NewContext(alloc)
 	return &page{ctx: tab, cancel: func() {
 		cancelTab()
