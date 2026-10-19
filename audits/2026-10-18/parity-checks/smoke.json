@@ -1,0 +1,503 @@
+{
+  "mode": "functional",
+  "title": "gi functional",
+  "started": "2026-10-18T21:22:09.974333-07:00",
+  "durationMs": 8.276667,
+  "passed": 7,
+  "failed": 0,
+  "skipped": 0,
+  "features": [
+    {
+      "path": "testdata/karate/copy/copy.feature",
+      "name": "the difference with variable scoping in 'isolated' and 'shared' mode",
+      "durationMs": 6.846292,
+      "scenarios": [
+        {
+          "name": "isolated scope: called feature does not over-write variables",
+          "line": 4,
+          "passed": true,
+          "skipped": false,
+          "durationMs": 4.116625,
+          "steps": [
+            {
+              "line": 5,
+              "keyword": "*",
+              "text": "def someString = 'before'",
+              "passed": true,
+              "durationMs": 0.047917
+            },
+            {
+              "line": 6,
+              "keyword": "*",
+              "text": "def someJson = { value: 'before' }",
+              "passed": true,
+              "durationMs": 0.493875
+            },
+            {
+              "line": 7,
+              "keyword": "*",
+              "text": "def result = call read('copy-called-overwrite.feature')",
+              "passed": true,
+              "durationMs": 2.161583,
+              "calls": [
+                {
+                  "line": 5,
+                  "keyword": "*",
+                  "text": "def someString = 'after'",
+                  "passed": true,
+                  "durationMs": 0.0155
+                },
+                {
+                  "line": 6,
+                  "keyword": "*",
+                  "text": "def someJson = { value: 'after' }",
+                  "passed": true,
+                  "durationMs": 0.018416
+                },
+                {
+                  "line": 7,
+                  "keyword": "*",
+                  "text": "def fromCalled = { hello: 'world' }",
+                  "passed": true,
+                  "durationMs": 0.019375
+                }
+              ]
+            },
+            {
+              "line": 8,
+              "keyword": "*",
+              "text": "match someString == 'before'",
+              "passed": true,
+              "durationMs": 0.183542
+            },
+            {
+              "line": 9,
+              "keyword": "*",
+              "text": "match someJson == { value: 'before' }",
+              "passed": true,
+              "durationMs": 0.015916
+            },
+            {
+              "line": 10,
+              "keyword": "*",
+              "text": "assert typeof fromCalled == 'undefined'",
+              "passed": true,
+              "durationMs": 0.031208
+            }
+          ]
+        },
+        {
+          "name": "shared scope: called feature will over-write (and contribute) variables",
+          "line": 12,
+          "passed": true,
+          "skipped": false,
+          "durationMs": 0.386584,
+          "steps": [
+            {
+              "line": 13,
+              "keyword": "*",
+              "text": "def someString = 'before'",
+              "passed": true,
+              "durationMs": 0.006083
+            },
+            {
+              "line": 14,
+              "keyword": "*",
+              "text": "def someJson = { value: 'before' }",
+              "passed": true,
+              "durationMs": 0.008583
+            },
+            {
+              "line": 15,
+              "keyword": "*",
+              "text": "call read('copy-called-overwrite.feature')",
+              "passed": true,
+              "durationMs": 0.256458,
+              "calls": [
+                {
+                  "line": 5,
+                  "keyword": "*",
+                  "text": "def someString = 'after'",
+                  "passed": true,
+                  "durationMs": 0.005
+                },
+                {
+                  "line": 6,
+                  "keyword": "*",
+                  "text": "def someJson = { value: 'after' }",
+                  "passed": true,
+                  "durationMs": 0.010583
+                },
+                {
+                  "line": 7,
+                  "keyword": "*",
+                  "text": "def fromCalled = { hello: 'world' }",
+                  "passed": true,
+                  "durationMs": 0.005334
+                }
+              ]
+            },
+            {
+              "line": 16,
+              "keyword": "*",
+              "text": "match someString == 'after'",
+              "passed": true,
+              "durationMs": 0.0055
+            },
+            {
+              "line": 17,
+              "keyword": "*",
+              "text": "match someJson == { value: 'after' }",
+              "passed": true,
+              "durationMs": 0.011625
+            },
+            {
+              "line": 18,
+              "keyword": "*",
+              "text": "match fromCalled == { hello: 'world' }",
+              "passed": true,
+              "durationMs": 0.00675
+            }
+          ]
+        },
+        {
+          "name": "called feature (isolated scope) cannot mutate top-level variables",
+          "line": 20,
+          "passed": true,
+          "skipped": false,
+          "durationMs": 0.525625,
+          "steps": [
+            {
+              "line": 21,
+              "keyword": "*",
+              "text": "def foo = { key: 'value' }",
+              "passed": true,
+              "durationMs": 0.007292
+            },
+            {
+              "line": 23,
+              "keyword": "*",
+              "text": "def result = call read('copy-called.feature')",
+              "passed": true,
+              "durationMs": 0.44,
+              "label": "json cannot be mutated in called features if isolated scope",
+              "calls": [
+                {
+                  "line": 5,
+                  "keyword": "*",
+                  "text": "match foo == { key: 'value' }",
+                  "passed": true,
+                  "durationMs": 0.012041
+                },
+                {
+                  "line": 6,
+                  "keyword": "*",
+                  "text": "foo.key = 'changed'",
+                  "passed": true,
+                  "durationMs": 0.007875
+                },
+                {
+                  "line": 7,
+                  "keyword": "*",
+                  "text": "match foo == { key: 'changed' }",
+                  "passed": true,
+                  "durationMs": 0.007167
+                }
+              ]
+            },
+            {
+              "line": 24,
+              "keyword": "*",
+              "text": "match foo == { key: 'value' }",
+              "passed": true,
+              "durationMs": 0.007125
+            }
+          ]
+        },
+        {
+          "name": "called feature (shared scope) can mutate top-level variables",
+          "line": 26,
+          "passed": true,
+          "skipped": false,
+          "durationMs": 0.290958,
+          "steps": [
+            {
+              "line": 27,
+              "keyword": "*",
+              "text": "def foo = { key: 'value' }",
+              "passed": true,
+              "durationMs": 0.006625,
+              "label": "json cannot be mutated in called features if isolated scope"
+            },
+            {
+              "line": 29,
+              "keyword": "*",
+              "text": "call read('copy-called.feature')",
+              "passed": true,
+              "durationMs": 0.209666,
+              "label": "json can be mutated in called features if shared scope",
+              "calls": [
+                {
+                  "line": 5,
+                  "keyword": "*",
+                  "text": "match foo == { key: 'value' }",
+                  "passed": true,
+                  "durationMs": 0.008708
+                },
+                {
+                  "line": 6,
+                  "keyword": "*",
+                  "text": "foo.key = 'changed'",
+                  "passed": true,
+                  "durationMs": 0.004917
+                },
+                {
+                  "line": 7,
+                  "keyword": "*",
+                  "text": "match foo == { key: 'changed' }",
+                  "passed": true,
+                  "durationMs": 0.007
+                }
+              ]
+            },
+            {
+              "line": 30,
+              "keyword": "*",
+              "text": "match foo == { key: 'changed' }",
+              "passed": true,
+              "durationMs": 0.006417
+            }
+          ]
+        },
+        {
+          "name": "you can manually 'clone' a payload if needed",
+          "line": 32,
+          "passed": true,
+          "skipped": false,
+          "durationMs": 0.301291,
+          "steps": [
+            {
+              "line": 33,
+              "keyword": "*",
+              "text": "def original = { key: 'value' }",
+              "passed": true,
+              "durationMs": 0.006917,
+              "label": "json can be mutated in called features if shared scope"
+            },
+            {
+              "line": 35,
+              "keyword": "*",
+              "text": "copy foo = original",
+              "passed": true,
+              "durationMs": 0.008458,
+              "label": "since the called feature mutates 'foo' we ensure it is a clone"
+            },
+            {
+              "line": 36,
+              "keyword": "*",
+              "text": "call read('copy-called.feature')",
+              "passed": true,
+              "durationMs": 0.198375,
+              "calls": [
+                {
+                  "line": 5,
+                  "keyword": "*",
+                  "text": "match foo == { key: 'value' }",
+                  "passed": true,
+                  "durationMs": 0.010291
+                },
+                {
+                  "line": 6,
+                  "keyword": "*",
+                  "text": "foo.key = 'changed'",
+                  "passed": true,
+                  "durationMs": 0.005791
+                },
+                {
+                  "line": 7,
+                  "keyword": "*",
+                  "text": "match foo == { key: 'changed' }",
+                  "passed": true,
+                  "durationMs": 0.006791
+                }
+              ]
+            },
+            {
+              "line": 37,
+              "keyword": "*",
+              "text": "match foo == { key: 'changed' }",
+              "passed": true,
+              "durationMs": 0.00775
+            },
+            {
+              "line": 39,
+              "keyword": "*",
+              "text": "match original == { key: 'value' }",
+              "passed": true,
+              "durationMs": 0.007625,
+              "label": "and original remains unchanged"
+            }
+          ]
+        },
+        {
+          "name": "clone should be 'deep' and work even for nested data",
+          "line": 41,
+          "passed": true,
+          "skipped": false,
+          "durationMs": 1.137583,
+          "steps": [
+            {
+              "line": 42,
+              "keyword": "*",
+              "text": "def temp = call read('copy-called-nested.feature')",
+              "passed": true,
+              "durationMs": 1.02225,
+              "label": "and original remains unchanged",
+              "calls": [
+                {
+                  "line": 5,
+                  "keyword": "*",
+                  "text": "def root = { name: { name: 'inner' } }",
+                  "passed": true,
+                  "durationMs": 0.015375
+                }
+              ]
+            },
+            {
+              "line": 43,
+              "keyword": "*",
+              "text": "def a = temp.root",
+              "passed": true,
+              "durationMs": 0.004292
+            },
+            {
+              "line": 44,
+              "keyword": "*",
+              "text": "copy b = a",
+              "passed": true,
+              "durationMs": 0.006
+            },
+            {
+              "line": 45,
+              "keyword": "*",
+              "text": "b.name.name = 'copy'",
+              "passed": true,
+              "durationMs": 0.0115
+            },
+            {
+              "line": 46,
+              "keyword": "*",
+              "text": "match b.name.name == 'copy'",
+              "passed": true,
+              "durationMs": 0.009083
+            },
+            {
+              "line": 47,
+              "keyword": "*",
+              "text": "match a.name.name == 'inner'",
+              "passed": true,
+              "durationMs": 0.006375
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "testdata/karate/xml/xml-call.feature",
+      "name": "XML call test",
+      "durationMs": 4.169833,
+      "scenarios": [
+        {
+          "name": "call with XML nodes as argument",
+          "line": 3,
+          "passed": true,
+          "skipped": false,
+          "durationMs": 4.080459,
+          "steps": [
+            {
+              "line": 4,
+              "keyword": "*",
+              "text": "def moreXml =",
+              "passed": true,
+              "durationMs": 0.266583
+            },
+            {
+              "line": 15,
+              "keyword": "*",
+              "text": "def nodes = get moreXml //hello",
+              "passed": true,
+              "durationMs": 0.446083
+            },
+            {
+              "line": 16,
+              "keyword": "*",
+              "text": "def response = call read('xml-called.feature') { nodes: '#(nodes)' }",
+              "passed": true,
+              "durationMs": 2.127,
+              "calls": [
+                {
+                  "line": 5,
+                  "keyword": "*",
+                  "text": "def result = nodes",
+                  "passed": true,
+                  "durationMs": 0.005541
+                }
+              ]
+            },
+            {
+              "line": 17,
+              "keyword": "*",
+              "text": "match response.result[0] == \u003chello\u003e\u003cthere\u003eeveryone\u003c/there\u003e\u003c/hello\u003e",
+              "passed": true,
+              "durationMs": 0.049208
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "timeline": [
+    {
+      "name": "the difference with variable scoping in 'isolated' and 'shared' mode · isolated scope: called feature does not over-write variables",
+      "passed": true,
+      "left": 17.6887870443501,
+      "width": 49.7377144688798
+    },
+    {
+      "name": "the difference with variable scoping in 'isolated' and 'shared' mode · shared scope: called feature will over-write (and contribute) variables",
+      "passed": true,
+      "left": 67.44562756964851,
+      "width": 4.670769042659321
+    },
+    {
+      "name": "the difference with variable scoping in 'isolated' and 'shared' mode · called feature (isolated scope) cannot mutate top-level variables",
+      "passed": true,
+      "left": 72.1269685007262,
+      "width": 6.35068439989189
+    },
+    {
+      "name": "the difference with variable scoping in 'isolated' and 'shared' mode · called feature (shared scope) can mutate top-level variables",
+      "passed": true,
+      "left": 78.48520424948835,
+      "width": 3.515400583350762
+    },
+    {
+      "name": "the difference with variable scoping in 'isolated' and 'shared' mode · you can manually 'clone' a payload if needed",
+      "passed": true,
+      "left": 82.00715336257942,
+      "width": 3.6402455239530602
+    },
+    {
+      "name": "the difference with variable scoping in 'isolated' and 'shared' mode · clone should be 'deep' and work even for nested data",
+      "passed": true,
+      "left": 85.65747540646495,
+      "width": 13.744457763010159
+    },
+    {
+      "name": "XML call test · call with XML nodes as argument",
+      "passed": true,
+      "left": 17.652033119128753,
+      "width": 49.300751135692664
+    }
+  ]
+}

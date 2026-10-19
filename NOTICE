@@ -1,0 +1,8 @@
+gi
+Copyright 2026 gi-runner
+
+This product includes feature files from Karate
+(https://github.com/karatelabs/karate) at commit
+00d0fc9efdbbfe632005af69224bb07b3848d85a.
+Those files stay under the MIT License.
+See testdata/karate/LICENSE.

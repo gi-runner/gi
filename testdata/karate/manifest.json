@@ -1,0 +1,29 @@
+{
+  "commit": "00d0fc9efdbbfe632005af69224bb07b3848d85a",
+  "files": {
+    "xml/xml-call.feature": {
+      "source": "karate-core/src/test/resources/io/karatelabs/core/xml/xml-call.feature",
+      "sha256": "52092ed65131183a343e91eb4e4d4e5e197793f82419ebe6a68a1e0a6b55eaef"
+    },
+    "xml/xml-called.feature": {
+      "source": "karate-core/src/test/resources/io/karatelabs/core/xml/xml-called.feature",
+      "sha256": "259857b5a4cad5899979918507cc0bba8e8a53c3b6d01d77a8a8cbe49d4591d4"
+    },
+    "copy/copy.feature": {
+      "source": "karate-core/src/test/resources/io/karatelabs/core/copy/copy.feature",
+      "sha256": "3b18228e52bb4abc17cd23dc120a5ae7126982eccbc14f944265efe99f55c643"
+    },
+    "copy/copy-called.feature": {
+      "source": "karate-core/src/test/resources/io/karatelabs/core/copy/copy-called.feature",
+      "sha256": "e435c4ba806597974748096bce84b5f3bc0650981a8580f9ae668533065105ff"
+    },
+    "copy/copy-called-overwrite.feature": {
+      "source": "karate-core/src/test/resources/io/karatelabs/core/copy/copy-called-overwrite.feature",
+      "sha256": "ec7e9b8f16cd4c8a6a9b66d8c1bfc639da0c7e3ef19ce7288aba6c10826af0f3"
+    },
+    "copy/copy-called-nested.feature": {
+      "source": "karate-core/src/test/resources/io/karatelabs/core/copy/copy-called-nested.feature",
+      "sha256": "f52b2477861f92b34b161ddd4c0ab28c79231b77c719ad0f7ef7e20343a8d91a"
+    }
+  }
+}

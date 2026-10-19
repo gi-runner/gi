@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>gi functional</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; font: 15px/1.45 ui-sans-serif, system-ui, sans-serif; background: #07080a; color: #eceae4; }
+  main { max-width: 980px; margin: 0 auto; padding: 40px 20px 80px; }
+  h1 { font-size: 28px; margin: 0 0 6px; letter-spacing: -0.03em; }
+  h2 { font-size: 18px; margin: 28px 0 10px; }
+  .sub { color: #a39e93; margin-bottom: 22px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .card { background: #101218; border: 1px solid #262a33; border-radius: 12px; padding: 14px 16px; min-width: 120px; }
+  .card b { display: block; font-size: 22px; }
+  .ok { color: #8dcea0; } .bad { color: #f0a3a3; } .dim { color: #a39e93; }
+  details { border: 1px solid #262a33; border-radius: 12px; padding: 10px 14px; margin: 8px 0; background: #101218; }
+  summary { cursor: pointer; }
+  .step { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid #262a33; }
+  pre { white-space: pre-wrap; background: #07080a; padding: 10px; border-radius: 8px; overflow: auto; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #262a33; font-size: 13px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .nest { margin: 4px 0 4px 14px; padding-left: 12px; border-left: 1px solid #262a33; }
+  .tl { margin: 8px 0 20px; }
+  .tl-row { display: grid; grid-template-columns: 280px 1fr; gap: 10px; align-items: center; margin: 4px 0; }
+  .tl-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+  .tl-track { position: relative; height: 14px; background: #101218; border-radius: 7px; }
+  .tl-bar { position: absolute; top: 2px; height: 10px; border-radius: 5px; min-width: 2px; }
+  .tl-bar.ok { background: #8dcea0; }
+  .tl-bar.bad { background: #f0a3a3; }
+</style>
+</head>
+<body>
+<main>
+  <h1>gi functional</h1>
+  <div class="sub">functional · 2026-10-18 20:44:00 · 2.06 ms</div>
+  <div class="row">
+    <div class="card"><span class="dim">passed</span><b class="ok">2</b></div>
+    <div class="card"><span class="dim">failed</span><b class="bad">0</b></div>
+    <div class="card"><span class="dim">skipped</span><b>0</b></div>
+  </div>
+  
+  
+  <h2>Timeline</h2>
+  <div class="tl">
+    
+    <div class="tl-row">
+      <div class="tl-name" title="release smoke · helpers and typed data">release smoke · helpers and typed data</div>
+      <div class="tl-track"><div class="tl-bar ok" style="left: 29.170877023886327%; width: 64.68362080356934%"></div></div>
+    </div>
+    
+    <div class="tl-row">
+      <div class="tl-name" title="release smoke · byte conversion">release smoke · byte conversion</div>
+      <div class="tl-track"><div class="tl-bar ok" style="left: 29.11826375232217%; width: 54.79334595145004%"></div></div>
+    </div>
+    
+  </div>
+  
+  
+    <h2>release smoke</h2>
+    <div class="dim">/tmp/gi-release-smoke.feature</div>
+    
+      <details >
+        <summary class="ok">
+          passed
+          · helpers and typed data · 1.33 ms
+        </summary>
+        
+        
+
+  <div class="step">
+    <code>* def numbers = karate.range(1, 3)</code>
+    <span class="dim">0.63 ms</span>
+    
+    
+    
+    
+    
+    
+  </div>
+
+  <div class="step">
+    <code>* match numbers == [1, 2, 3]</code>
+    <span class="dim">0.04 ms</span>
+    
+    
+    
+    
+    
+    
+  </div>
+
+  <div class="step">
+    <code>* set user</code>
+    <span class="dim">0.01 ms</span>
+    
+    
+    
+    
+    
+    
+  </div>
+
+  <div class="step">
+    <code>* match user == { name: &#39;Ada&#39; }</code>
+    <span class="dim">0.03 ms</span>
+    
+    
+    
+    
+    
+    
+  </div>
+
+
+      </details>
+    
+      <details >
+        <summary class="ok">
+          passed
+          · byte conversion · 1.13 ms
+        </summary>
+        
+        
+
+  <div class="step">
+    <code>* bytes raw = &#39;native&#39;</code>
+    <span class="dim">0.45 ms</span>
+    
+    
+    
+    
+    
+    
+  </div>
+
+  <div class="step">
+    <code>* string text = raw</code>
+    <span class="dim">0.02 ms</span>
+    
+    
+    
+    
+    
+    
+  </div>
+
+  <div class="step">
+    <code>* match text == &#39;native&#39;</code>
+    <span class="dim">0.03 ms</span>
+    
+    
+    
+    
+    
+    
+  </div>
+
+
+      </details>
+    
+  
+</main>
+</body>
+</html>
+

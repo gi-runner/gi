@@ -1,0 +1,60 @@
+site_name: gi
+site_url: https://gi-runner.github.io/gi/
+repo_url: https://github.com/gi-runner/gi
+repo_name: gi-runner/gi
+site_description: One feature file for tests, mocks, and load. One static binary. No JVM.
+copyright: Copyright 2026 gi-runner. Apache License 2.0.
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  custom_dir: overrides
+  logo: mascot.png
+  favicon: icon.jpg
+  palette:
+    scheme: slate
+    primary: teal
+    accent: teal
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - toc.follow
+    - search.suggest
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - Get started:
+      - Install: install.md
+      - Quick start: quickstart.md
+  - Write tests:
+      - Language: language.md
+      - HTTP requests: http.md
+      - Assertions: match.md
+      - Data-driven tests: data.md
+      - Reuse and configuration: suite.md
+  - Run tests:
+      - Command line: cli.md
+      - Reports: reports.md
+  - Test more:
+      - Load testing: load.md
+      - HTTP mocks: mock.md
+      - Browser and protocols: protocols.md
+  - Go API: embedding.md
+  - Limits: limits.md

@@ -1,0 +1,99 @@
+{
+  "mode": "functional",
+  "title": "gi functional",
+  "started": "2026-10-18T20:44:00.832665-07:00",
+  "durationMs": 2.058416,
+  "passed": 2,
+  "failed": 0,
+  "skipped": 0,
+  "features": [
+    {
+      "path": "/tmp/gi-release-smoke.feature",
+      "name": "release smoke",
+      "durationMs": 1.452458,
+      "scenarios": [
+        {
+          "name": "helpers and typed data",
+          "line": 2,
+          "passed": true,
+          "skipped": false,
+          "durationMs": 1.331458,
+          "steps": [
+            {
+              "line": 3,
+              "keyword": "*",
+              "text": "def numbers = karate.range(1, 3)",
+              "passed": true,
+              "durationMs": 0.629625
+            },
+            {
+              "line": 4,
+              "keyword": "*",
+              "text": "match numbers == [1, 2, 3]",
+              "passed": true,
+              "durationMs": 0.040084
+            },
+            {
+              "line": 5,
+              "keyword": "*",
+              "text": "set user",
+              "passed": true,
+              "durationMs": 0.008875
+            },
+            {
+              "line": 8,
+              "keyword": "*",
+              "text": "match user == { name: 'Ada' }",
+              "passed": true,
+              "durationMs": 0.032584
+            }
+          ]
+        },
+        {
+          "name": "byte conversion",
+          "line": 9,
+          "passed": true,
+          "skipped": false,
+          "durationMs": 1.127875,
+          "steps": [
+            {
+              "line": 10,
+              "keyword": "*",
+              "text": "bytes raw = 'native'",
+              "passed": true,
+              "durationMs": 0.453541
+            },
+            {
+              "line": 11,
+              "keyword": "*",
+              "text": "string text = raw",
+              "passed": true,
+              "durationMs": 0.023083
+            },
+            {
+              "line": 12,
+              "keyword": "*",
+              "text": "match text == 'native'",
+              "passed": true,
+              "durationMs": 0.031458
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "timeline": [
+    {
+      "name": "release smoke · helpers and typed data",
+      "passed": true,
+      "left": 29.170877023886327,
+      "width": 64.68362080356934
+    },
+    {
+      "name": "release smoke · byte conversion",
+      "passed": true,
+      "left": 29.11826375232217,
+      "width": 54.79334595145004
+    }
+  ]
+}

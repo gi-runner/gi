@@ -1,0 +1,7 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/gi-runner/gi/internal/match
+cpu: Apple M4
+BenchmarkContainsOnlyOverlapping-10    	    5941	    180530 ns/op	   73826 B/op	     520 allocs/op
+PASS
+ok  	github.com/gi-runner/gi/internal/match	1.544s

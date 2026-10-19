@@ -1,0 +1,14 @@
+
+XML call test
+  ✓ call with XML nodes as argument (4ms)
+
+the difference with variable scoping in 'isolated' and 'shared' mode
+  ✓ isolated scope: called feature does not over-write variables (4ms)
+  ✓ shared scope: called feature will over-write (and contribute) variables (0s)
+  ✓ called feature (isolated scope) cannot mutate top-level variables (1ms)
+  ✓ called feature (shared scope) can mutate top-level variables (0s)
+  ✓ you can manually 'clone' a payload if needed (0s)
+  ✓ clone should be 'deep' and work even for nested data (1ms)
+wrote /tmp/gi-parity-smoke.html
+wrote /tmp/gi-parity-smoke.xml
+wrote /tmp/gi-parity-smoke.json

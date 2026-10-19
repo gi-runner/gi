@@ -1,0 +1,7 @@
+
+release smoke
+  ✓ helpers and typed data (1ms)
+  ✓ byte conversion (1ms)
+wrote /tmp/gi-release-smoke.html
+wrote /tmp/gi-release-smoke.xml
+wrote /tmp/gi-release-smoke.json

@@ -1,0 +1,22 @@
+ok  	github.com/gi-runner/gi	2.046s
+?   	github.com/gi-runner/gi/cmd/gi	[no test files]
+?   	github.com/gi-runner/gi/examples/server	[no test files]
+?   	github.com/gi-runner/gi/internal/adapters	[no test files]
+ok  	github.com/gi-runner/gi/internal/audit	3.533s
+ok  	github.com/gi-runner/gi/internal/browser	8.596s
+ok  	github.com/gi-runner/gi/internal/cli	3.996s
+?   	github.com/gi-runner/gi/internal/demoapi	[no test files]
+ok  	github.com/gi-runner/gi/internal/engine	6.472s
+ok  	github.com/gi-runner/gi/internal/feature	(cached)
+ok  	github.com/gi-runner/gi/internal/grpcx	5.065s
+?   	github.com/gi-runner/gi/internal/httpx	[no test files]
+ok  	github.com/gi-runner/gi/internal/kafkax	11.877s
+ok  	github.com/gi-runner/gi/internal/load	7.702s
+ok  	github.com/gi-runner/gi/internal/match	8.320s
+ok  	github.com/gi-runner/gi/internal/mock	5.832s
+ok  	github.com/gi-runner/gi/internal/report	7.919s
+ok  	github.com/gi-runner/gi/internal/script	7.051s
+ok  	github.com/gi-runner/gi/internal/suite	6.972s
+ok  	github.com/gi-runner/gi/internal/value	(cached)
+?   	github.com/gi-runner/gi/internal/wsx	[no test files]
+ok  	github.com/gi-runner/gi/internal/xml	(cached)

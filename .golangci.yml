@@ -1,0 +1,77 @@
+version: "2"
+
+run:
+  timeout: 10m
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+linters:
+  default: standard
+  enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - canonicalheader
+    - containedctx
+    - contextcheck
+    - copyloopvar
+    - dogsled
+    - dupword
+    - durationcheck
+    - errchkjson
+    - errname
+    - errorlint
+    - exhaustive
+    - fatcontext
+    - forcetypeassert
+    - gocheckcompilerdirectives
+    - gocritic
+    - gosec
+    - intrange
+    - loggercheck
+    - makezero
+    - mirror
+    - misspell
+    - modernize
+    - musttag
+    - nakedret
+    - nilerr
+    - nilnesserr
+    - nilnil
+    - noctx
+    - nolintlint
+    - nosprintfhostport
+    - perfsprint
+    - prealloc
+    - predeclared
+    - reassign
+    - recvcheck
+    - rowserrcheck
+    - sqlclosecheck
+    - testifylint
+    - thelper
+    - unconvert
+    - unparam
+    - usestdlibvars
+    - usetesting
+    - wastedassign
+  settings:
+    gosec:
+      # Feature files and fixtures are paths the user named. Chrome is launched
+      # from the installed browser, not from a string the scenario builds.
+      excludes:
+        - G304
+        - G204
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [gosec]
+        text: "G101:|G117:|G124:"
+      # The test body is a few hundred bytes. MaxBytesReader and a 1 MiB cap
+      # bound it; gosec still flags every ParseMultipartForm.
+      - path: internal/engine/multipart_test\.go
+        linters: [gosec]
+        text: "G120:"

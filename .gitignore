@@ -1,0 +1,10 @@
+.DS_Store
+/bin/
+/dist/
+/site/
+/.venv/
+*.out
+/report.html
+/load.html
+/report.json
+/junit.xml
