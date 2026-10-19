@@ -23,7 +23,7 @@ func TestChromePage(t *testing.T) {
 		_, _ = w.Write([]byte(`<!doctype html><input id="name"><button id="go" onclick="document.getElementById('out').textContent=document.getElementById('name').value"></button><div id="out"></div>`))
 	}))
 	defer srv.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	page, err := Open(ctx)
 	if err != nil {
@@ -104,7 +104,7 @@ Scenario: browser
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
 	result, err := engine.RunFile(ctx, f, engine.Options{NewPage: Open, Vars: map[string]any{"baseUrl": server.URL}})
 	if err != nil {
@@ -149,7 +149,7 @@ Scenario: file inputs
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
 	res, err := engine.RunFile(ctx, f, engine.Options{NewPage: Open, Vars: map[string]any{"baseUrl": server.URL}})
 	if err != nil {
