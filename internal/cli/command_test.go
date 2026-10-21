@@ -119,3 +119,63 @@ Scenario: unique path
 		}
 	}
 }
+
+func TestCommandHelpVersionAndUsage(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		args     []string
+		code     int
+		contains string
+	}{
+		{"empty", nil, 2, "Usage:"},
+		{"root help", []string{"--help"}, 0, "completion"},
+		{"test help", []string{"test", "--help"}, 0, "--jobs"},
+		{"load help", []string{"help", "load"}, 0, "--max-endpoints"},
+		{"mock help", []string{"mock", "-h"}, 0, "--addr"},
+		{"version command", []string{"version"}, 0, "gi " + version},
+		{"version flag", []string{"--version"}, 0, "gi " + version},
+		{"short version", []string{"-v"}, 0, "gi " + version},
+		{"unknown command", []string{"unknown"}, 2, "unknown command"},
+		{"unknown flag", []string{"test", "--unknown"}, 2, "unknown flag"},
+		{"invalid duration", []string{"load", "--duration", "oops"}, 2, "invalid argument"},
+		{"missing mock path", []string{"mock"}, 2, "accepts 1 arg"},
+		{"extra mock path", []string{"mock", "a.feature", "b.feature"}, 2, "accepts 1 arg"},
+		{"extra version arg", []string{"version", "extra"}, 2, "unknown command"},
+		{"completion", []string{"completion", "bash"}, 0, "__start_gi"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			code, out := runCLI(t, tc.args...)
+			if code != tc.code || !strings.Contains(out, tc.contains) {
+				t.Fatalf("exit %d, want %d; want %q in output: %s", code, tc.code, tc.contains, out)
+			}
+		})
+	}
+}
+
+func TestCommandRepeatedVariablesAndTerminator(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "run.feature")
+	source := `Feature: CLI variables
+Scenario: values survive parsing
+* match csv == 'a,b'
+* match choice == 'last'
+* match negative == '-1'
+`
+	if err := os.WriteFile(path, []byte(source), 0600); err != nil {
+		t.Fatal(err)
+	}
+	code, out := runCLI(t, "test", "--var", "choice=first", path, "--var", "csv=a,b", "--var", "choice=last", "--var", "negative=-1")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+	// Run discovery on a relative path starting with '-' after the terminator.
+	name := "-special.feature"
+	if err := os.WriteFile(filepath.Join(dir, name), []byte("Feature: terminator\nScenario: run\n* assert true\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	code, out = runCLI(t, "test", "--jobs", "1", "--", name)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+}

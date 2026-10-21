@@ -3,9 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
-	"io"
 	"io/fs"
 	"net/http"
 	"os"
@@ -14,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/spf13/pflag"
 
 	"github.com/gi-runner/gi/internal/adapters"
 	"github.com/gi-runner/gi/internal/engine"
@@ -27,127 +27,32 @@ import (
 
 const version = "0.2.0"
 
-func Main(args []string) int {
-	if len(args) == 0 {
-		usage(os.Stdout)
-		return 2
-	}
-	switch args[0] {
-	case "test":
-		return cmdTest(args[1:])
-	case "load":
-		return cmdLoad(args[1:])
-	case "mock":
-		return cmdMock(args[1:])
-	case "version", "-v", "--version":
-		fmt.Println("gi", version)
-		return 0
-	case "help", "-h", "--help":
-		usage(os.Stdout)
-		return 0
-	default:
-		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", args[0])
-		usage(os.Stderr)
-		return 2
-	}
-}
-
-func usage(w io.Writer) {
-	_, _ = fmt.Fprint(w, `gi runs a feature file as a functional test or a load test.
-
-Usage:
-  gi test [files or directories] [flags]
-  gi load [files or directories] [flags]
-  gi mock <file.feature> [flags]
-  gi version
-
-Functional flags:
-  --env name          loads gi-config-<env>.js and selects @env tags
-  --var key=value     variable available to the feature (repeatable)
-  --tag expr          @smoke, @a and @b, @a or @b, not @slow
-  --jobs n            features to run at once (default: one per CPU; 1 keeps order)
-  --timeout 30s       per-request timeout
-  --report file.html  self-contained HTML report
-  --junit file.xml    JUnit XML
-  --json file.json    JSON report
-  --cucumber file.json  Cucumber JSON
-  --otel-endpoint url OTLP/HTTP JSON trace endpoint
-
-Load flags, in addition to --var, --tag, --timeout, and the report flags:
-  --vus n             virtual users, each looping the scenario (default 10)
-  --vus-to n          ramp concurrent users from --vus to n
-  --rate n            scenario starts per second; earlier starts keep running
-  --rate-to n         ramp the start rate from --rate to n
-  --stage spec        repeatable segment, for example users=1:40 duration=30s
-  --max-inflight n    open-loop cap; a start past the cap is a missed start
-  --max-endpoints n   named endpoint limit (default 1000); extra paths aggregate
-  --duration 10s      measured window
-  --warmup 0s         unmeasured time before the window
-  --rps n             cap on HTTP calls, 0 means no cap
-  --threshold 'p95 < 200ms'   repeatable; also errorRate and rps
-
-Mock flags:
-  --addr :18080
-
-A feature can declare load defaults in comments:
-
-  # gi-load: vus=10 duration=10s
-  # gi-load: vus=1 vusTo=40 duration=30s
-  # gi-load: rate=50 duration=30s
-  # gi-load: rate=10 rateTo=200 duration=30s
-  # gi-load: stage users=1:40 duration=30s
-  # gi-load: stage users=40 duration=1m
-  # gi-load: stage spike users=200 duration=10s
-  # gi-load: maxInflight=100
-  # gi-load: threshold p95 < 200ms
-  # gi-load: threshold schedP95 < 1s
-  # gi-load: threshold errorRate < 1%
-`)
-}
-
-func cmdTest(args []string) int {
-	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	vars := multi{}
-	env := fs.String("env", "", "")
-	tag := fs.String("tag", "", "")
-	jobs := fs.Int("jobs", 0, "")
-	timeout := fs.Duration("timeout", 30*time.Second, "")
-	reportPath := fs.String("report", "", "")
-	junitPath := fs.String("junit", "", "")
-	jsonPath := fs.String("json", "", "")
-	cucumberPath := fs.String("cucumber", "", "")
-	otel := fs.String("otel-endpoint", "", "")
-	fs.Var(&vars, "var", "")
-	if err := fs.Parse(reorderFlags(args)); err != nil {
-		usage(os.Stderr)
-		return 2
-	}
-	files, err := discover(fs.Args())
+func runTest(args []string, opt testOptions) int {
+	files, err := discover(args)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	varmap, err := vars.Map()
+	varmap, err := parseVars(opt.vars)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	su := suite.Open(firstPath(files), *env)
+	su := suite.Open(firstPath(files), opt.env)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	started := time.Now()
-	n := *jobs
+	n := opt.jobs
 	if n < 1 {
 		n = runtime.GOMAXPROCS(0)
 	}
 	sender := httpx.New(nil)
 	defer sender.CloseIdleConnections()
-	opt := engine.Options{
-		Vars: varmap, HTTP: sender, Tag: *tag, Timeout: *timeout, Stdout: os.Stdout,
-		Env: *env, Suite: su, Dial: adapters.Dial, NewPage: adapters.NewPage,
+	options := engine.Options{
+		Vars: varmap, HTTP: sender, Tag: opt.tag, Timeout: opt.timeout, Stdout: os.Stdout,
+		Env: opt.env, Suite: su, Dial: adapters.Dial, NewPage: adapters.NewPage,
 	}
-	features, err := runFiles(ctx, files, opt, n)
+	features, err := runFiles(ctx, files, options, n)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -169,7 +74,7 @@ func cmdTest(args []string) int {
 		return 1
 	}
 	doc := report.Document{Mode: "functional", Title: "gi functional", Started: started, Duration: time.Since(started), Features: features}
-	if err := emit(ctx, doc, *reportPath, *junitPath, *jsonPath, *cucumberPath, *otel); err != nil {
+	if err := emit(ctx, doc, opt.reportPath, opt.junitPath, opt.jsonPath, opt.cucumberPath, opt.otel); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
@@ -179,47 +84,18 @@ func cmdTest(args []string) int {
 	return 0
 }
 
-func cmdLoad(args []string) int {
-	fs := flag.NewFlagSet("load", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	vars := multi{}
-	ths := multi{}
-	env := fs.String("env", "", "")
-	tag := fs.String("tag", "", "")
-	vus := fs.Int("vus", 0, "")
-	vusTo := fs.Int("vus-to", 0, "")
-	rate := fs.Float64("rate", 0, "")
-	rateTo := fs.Float64("rate-to", 0, "")
-	stages := multi{}
-	maxIn := fs.Int("max-inflight", 0, "")
-	maxEndpoints := fs.Int("max-endpoints", 0, "")
-	duration := fs.Duration("duration", 0, "")
-	warmup := fs.Duration("warmup", 0, "")
-	rps := fs.Int("rps", 0, "")
-	timeout := fs.Duration("timeout", 30*time.Second, "")
-	reportPath := fs.String("report", "", "")
-	junitPath := fs.String("junit", "", "")
-	jsonPath := fs.String("json", "", "")
-	cucumberPath := fs.String("cucumber", "", "")
-	otel := fs.String("otel-endpoint", "", "")
-	fs.Var(&vars, "var", "")
-	fs.Var(&ths, "threshold", "")
-	fs.Var(&stages, "stage", "")
-	if err := fs.Parse(reorderFlags(args)); err != nil {
-		usage(os.Stderr)
-		return 2
-	}
-	files, err := discover(fs.Args())
+func runLoad(args []string, opt loadCommandOptions) int {
+	files, err := discover(args)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	varmap, err := vars.Map()
+	varmap, err := parseVars(opt.vars)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	su := suite.Open(firstPath(files), *env)
+	su := suite.Open(firstPath(files), opt.env)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	started := time.Now()
@@ -238,13 +114,10 @@ func cmdLoad(args []string) int {
 			StageText: append([]string{}, f.Load.StageText...), MaxInFlight: f.Load.MaxInFlight, MaxEndpoints: f.Load.MaxEndpoints,
 			Duration: f.Load.Duration, Warmup: f.Load.Warmup, RPS: f.Load.RPS,
 			Thresholds: append([]string{}, f.Load.Thresholds...),
-			Vars:       varmap, Tag: *tag, Timeout: *timeout, Env: *env, Suite: su,
+			Vars:       varmap, Tag: opt.tag, Timeout: opt.timeout, Env: opt.env, Suite: su,
 			Dial: adapters.Dial, NewPage: adapters.NewPage,
 		}
-		if err := applyLoadFlags(&cfg, loadOptions{
-			fs: fs, vus: *vus, vusTo: *vusTo, rate: *rate, rateTo: *rateTo,
-			stages: stages, maxIn: *maxIn, maxEndpoints: *maxEndpoints, duration: *duration, warmup: *warmup, rps: *rps,
-		}); err != nil {
+		if err := applyLoadFlags(&cfg, opt.loadOptions); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 2
 		}
@@ -253,7 +126,7 @@ func cmdLoad(args []string) int {
 			fmt.Fprintln(os.Stderr, err)
 			return 2
 		}
-		cfg.Thresholds = append(cfg.Thresholds, ths...)
+		cfg.Thresholds = append(cfg.Thresholds, opt.thresholds...)
 		fmt.Printf("load %s  %s  duration=%s", f.Name, load.Describe(cfg), cfg.Duration)
 		if cfg.Warmup > 0 {
 			fmt.Printf("  warmup=%s", cfg.Warmup)
@@ -283,7 +156,7 @@ func cmdLoad(args []string) int {
 		last = &loads[len(loads)-1]
 	}
 	doc := report.Document{Mode: "load", Title: "gi load", Started: started, Duration: time.Since(started), Features: features, Load: last, Loads: loads}
-	if err := emit(ctx, doc, *reportPath, *junitPath, *jsonPath, *cucumberPath, *otel); err != nil {
+	if err := emit(ctx, doc, opt.reportPath, opt.junitPath, opt.jsonPath, opt.cucumberPath, opt.otel); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
@@ -293,25 +166,18 @@ func cmdLoad(args []string) int {
 	return 0
 }
 
-func cmdMock(args []string) int {
-	fs := flag.NewFlagSet("mock", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	addr := fs.String("addr", ":18080", "")
-	if err := fs.Parse(reorderFlags(args)); err != nil || fs.NArg() != 1 {
-		usage(os.Stderr)
-		return 2
-	}
-	f, err := feature.ParseFile(fs.Arg(0))
+func runMock(args []string, addr string) int {
+	f, err := feature.ParseFile(args[0])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
 	srv := &http.Server{
-		Addr:              *addr,
+		Addr:              addr,
 		Handler:           mock.Handler(f),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	fmt.Printf("mock %s on %s\n", f.Name, *addr)
+	fmt.Printf("mock %s on %s\n", f.Name, addr)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -422,34 +288,6 @@ func indent(s string) string {
 	return strings.Join(lines, "\n")
 }
 
-// reorderFlags lets `gi test file.feature --var k=v` work. The standard flag
-// parser stops at the first path, so flags are moved in front of file names.
-func reorderFlags(args []string) []string {
-	var flags []string
-	var files []string
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		if a == "--" {
-			files = append(files, args[i+1:]...)
-			break
-		}
-		if !strings.HasPrefix(a, "-") || a == "-" {
-			files = append(files, a)
-			continue
-		}
-		flags = append(flags, a)
-		name := strings.TrimLeft(a, "-")
-		if strings.Contains(name, "=") {
-			continue
-		}
-		if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-			i++
-			flags = append(flags, args[i])
-		}
-	}
-	return append(append(flags, "--"), files...)
-}
-
 func firstPath(files []string) string {
 	if len(files) == 0 {
 		return "."
@@ -506,7 +344,7 @@ func discover(args []string) ([]string, error) {
 }
 
 type loadOptions struct {
-	fs               *flag.FlagSet
+	fs               *pflag.FlagSet
 	vus, vusTo       int
 	rate, rateTo     float64
 	stages           []string
@@ -516,10 +354,10 @@ type loadOptions struct {
 }
 
 func applyLoadFlags(cfg *load.Config, opt loadOptions) error {
-	vusSet := flagGiven(opt.fs, "vus")
-	vusToSet := flagGiven(opt.fs, "vus-to")
-	rateSet := flagGiven(opt.fs, "rate")
-	rateToSet := flagGiven(opt.fs, "rate-to")
+	vusSet := opt.fs.Changed("vus")
+	vusToSet := opt.fs.Changed("vus-to")
+	rateSet := opt.fs.Changed("rate")
+	rateToSet := opt.fs.Changed("rate-to")
 	if (vusSet || vusToSet) && (rateSet || rateToSet) {
 		return errors.New("load profile is either virtual users or a start rate")
 	}
@@ -529,13 +367,13 @@ func applyLoadFlags(cfg *load.Config, opt loadOptions) error {
 	if (vusSet && opt.vus < 0) || (vusToSet && opt.vusTo < 0) || opt.rate < 0 || opt.rateTo < 0 || opt.rps < 0 || opt.warmup < 0 || opt.maxIn < 0 {
 		return errors.New("load profile values must be finite and nonnegative")
 	}
-	if flagGiven(opt.fs, "max-endpoints") {
+	if opt.fs.Changed("max-endpoints") {
 		if opt.maxEndpoints <= 0 {
 			return errors.New("max-endpoints must be positive")
 		}
 		cfg.MaxEndpoints = opt.maxEndpoints
 	}
-	if flagGiven(opt.fs, "max-inflight") {
+	if opt.fs.Changed("max-inflight") {
 		cfg.MaxInFlight = opt.maxIn
 	}
 	switch {
@@ -580,10 +418,10 @@ func applyLoadFlags(cfg *load.Config, opt loadOptions) error {
 	if opt.duration > 0 {
 		cfg.Duration = opt.duration
 	}
-	if flagGiven(opt.fs, "warmup") {
+	if opt.fs.Changed("warmup") {
 		cfg.Warmup = opt.warmup
 	}
-	if flagGiven(opt.fs, "rps") {
+	if opt.fs.Changed("rps") {
 		cfg.RPS = opt.rps
 	}
 	staged := len(cfg.StageText) > 0 || len(cfg.Stages) > 0
@@ -596,26 +434,9 @@ func applyLoadFlags(cfg *load.Config, opt loadOptions) error {
 	return nil
 }
 
-func flagGiven(fs *flag.FlagSet, name string) bool {
-	set := false
-	fs.Visit(func(f *flag.Flag) {
-		if f.Name == name {
-			set = true
-		}
-	})
-	return set
-}
-
-type multi []string
-
-func (m *multi) String() string { return strings.Join(*m, ",") }
-func (m *multi) Set(s string) error {
-	*m = append(*m, s)
-	return nil
-}
-func (m *multi) Map() (map[string]any, error) {
+func parseVars(values []string) (map[string]any, error) {
 	out := map[string]any{}
-	for _, item := range *m {
+	for _, item := range values {
 		k, v, ok := strings.Cut(item, "=")
 		if !ok || k == "" {
 			return nil, fmt.Errorf("--var expects key=value, got %q", item)

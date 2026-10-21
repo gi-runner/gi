@@ -1,19 +1,19 @@
 package cli
 
 import (
-	"flag"
+	"github.com/spf13/pflag"
 	"reflect"
 	"testing"
 )
 
-func TestReorderedFlagsPreserveFileTerminator(t *testing.T) {
+func TestFlagsPreserveFileTerminator(t *testing.T) {
 	for _, args := range [][]string{
 		{"normal.feature", "--jobs", "2", "--", "-special.feature"},
 		{"--jobs=2", "--", "-special.feature", "normal.feature"},
 	} {
-		fs := flag.NewFlagSet("test", flag.ContinueOnError)
+		fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
 		jobs := fs.Int("jobs", 0, "")
-		if err := fs.Parse(reorderFlags(args)); err != nil {
+		if err := fs.Parse(args); err != nil {
 			t.Fatal(err)
 		}
 		if *jobs != 2 {

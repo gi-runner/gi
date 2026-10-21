@@ -9,7 +9,10 @@ gi version
 
 Exit status is 0 when the run passed, 1 when a scenario, a threshold, or a file failed, and 2 when the command line is wrong.
 
-Flags may follow the file path. `gi test users.feature --var baseUrl=http://127.0.0.1:18080` is valid.
+Use `gi <command> --help` for command options. Shell completion is available through
+`gi completion bash`, `gi completion zsh`, `gi completion fish`, or `gi completion powershell`.
+
+Flags may follow the file path. Use `--` before paths beginning with `-`. `gi test users.feature --var baseUrl=http://127.0.0.1:18080` is valid.
 
 ## test
 

@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"flag"
+	"github.com/spf13/pflag"
 	"testing"
 	"time"
 
@@ -37,7 +37,7 @@ func TestApplyLoadFlags(t *testing.T) {
 
 func loadFlags(t *testing.T, args ...string) (load.Config, error) {
 	t.Helper()
-	fs := flag.NewFlagSet("load", flag.ContinueOnError)
+	fs := pflag.NewFlagSet("load", pflag.ContinueOnError)
 	vus := fs.Int("vus", 0, "")
 	vusTo := fs.Int("vus-to", 0, "")
 	rate := fs.Float64("rate", 0, "")
@@ -57,7 +57,7 @@ func loadFlags(t *testing.T, args ...string) (load.Config, error) {
 }
 
 func TestRateFlagOverridesFeatureStages(t *testing.T) {
-	fs := flag.NewFlagSet("load", flag.ContinueOnError)
+	fs := pflag.NewFlagSet("load", pflag.ContinueOnError)
 	rate := fs.Float64("rate", 0, "")
 	fs.Int("vus", 0, "")
 	fs.Int("vus-to", 0, "")
@@ -80,7 +80,7 @@ func TestRateFlagOverridesFeatureStages(t *testing.T) {
 		t.Fatalf("%+v %v", norm, err)
 	}
 
-	plain := flag.NewFlagSet("load", flag.ContinueOnError)
+	plain := pflag.NewFlagSet("load", pflag.ContinueOnError)
 	plain.Int("vus", 0, "")
 	plain.Int("vus-to", 0, "")
 	plain.Float64("rate", 0, "")
@@ -103,7 +103,7 @@ func TestRateFlagOverridesFeatureStages(t *testing.T) {
 
 func TestEndpointLimitFlag(t *testing.T) {
 	for _, arg := range []string{"3", "0", "-1"} {
-		fs := flag.NewFlagSet("load", flag.ContinueOnError)
+		fs := pflag.NewFlagSet("load", pflag.ContinueOnError)
 		limit := fs.Int("max-endpoints", 0, "")
 		if err := fs.Parse([]string{"--max-endpoints", arg}); err != nil {
 			t.Fatal(err)
