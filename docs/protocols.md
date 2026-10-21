@@ -44,7 +44,7 @@ The link closes when the scenario ends.
 
 ## Browser
 
-`driver` opens a URL in headless Chrome. Actions accept CSS or XPath selectors; single-element locators also support Karate text selectors. `gi.pageText` reads an element.
+`driver` opens a URL in headless Chrome. Actions accept CSS or XPath selectors; single-element locators also support text selectors. `gi.pageText` reads an element.
 
 ```gherkin
 * driver pageUrl
@@ -58,7 +58,7 @@ The link closes when the scenario ends.
 
 ### Actions and locators
 
-After opening `driver`, global helpers and driver methods support `click`, `input`, `inputFile`, `clear`, `select`, `focus`, `scroll`, `text`, `html`, `value`, `attribute`, `exists`, `enabled`, `locate`, `locateAll`, `waitFor`, `waitForText`, `waitForEnabled`, `waitForUrl`, string `waitUntil`, `script` and `screenshot`. Navigation includes back, forward and refresh; `driver.url` and `driver.title` are readable properties. Locators support CSS, XPath and single-element Karate text selectors. Located elements expose fluent actions and read properties.
+After opening `driver`, global helpers and driver methods support `click`, `input`, `inputFile`, `clear`, `select`, `focus`, `scroll`, `text`, `html`, `value`, `attribute`, `exists`, `enabled`, `locate`, `locateAll`, `waitFor`, `waitForText`, `waitForEnabled`, `waitForUrl`, string `waitUntil`, `script` and `screenshot`. Navigation includes back, forward and refresh; `driver.url` and `driver.title` are readable properties. Locators support CSS, XPath and single-element text selectors. Located elements expose fluent actions and read properties.
 
 Screenshots return PNG bytes and are attached to the step that took them. Shared calls retain browser ownership; isolated calls borrow an existing page without closing it.
 

@@ -1,4 +1,4 @@
-// Package gi runs Karate-style feature files without a JVM.
+// Package gi runs feature files for tests, mocks, and load without a JVM.
 package gi
 
 import (

@@ -81,7 +81,7 @@
     k.mapWithKey = function(x, key) {
         return x.map(function(v) { var out = {}; out[key] = v; return out; });
     };
-    // Karate merge is shallow: a later object replaces an earlier nested value.
+    // Merge is shallow: a later object replaces an earlier nested value.
     k.merge = function() {
         return Object.assign.apply(Object, [{}].concat(Array.prototype.slice.call(arguments)));
     };
