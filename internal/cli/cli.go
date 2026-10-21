@@ -25,7 +25,7 @@ import (
 	"github.com/gi-runner/gi/internal/suite"
 )
 
-const version = "0.2.0"
+const version = "0.3.0"
 
 func runTest(args []string, opt testOptions) int {
 	files, err := discover(args)
