@@ -145,138 +145,88 @@ func (v *VM) ApplyConfiguration(c Configuration) error {
 	return nil
 }
 
-// Scope shares the runtime, preserving closures, while isolating data and
-// configuration for assigned calls. Only top-level scenarios own a VM.
-func (v *VM) Scope(shared bool) func() {
-	bindings := v.bindings
-	config := v.Configuration()
-	vars := maps.Clone(v.vars)
-	global := v.rt.GlobalObject()
-	saved := make(map[string]sobek.Value)
-	for _, name := range global.GetOwnPropertyNames() {
-		saved[name] = global.Get(name)
-	}
-	prototypes := snapshotPrototypes(v.rt)
-	if !shared {
-		seen := make(map[*sobek.Object]*sobek.Object)
-		for name := range vars {
-			val := cloneJS(v.rt, global.Get(name), seen)
-			_ = global.Set(name, val)
+func (child *VM) adopt(parent *VM) error {
+	child.retryN, child.retryEvery, child.retryUntil = parent.retryN, parent.retryEvery, parent.retryUntil
+	if parent.headerFn != nil {
+		if err := child.storeHeaders(child.toJS(jsFunc{vm: parent, v: parent.headerValue})); err != nil {
+			return err
+		}
+	} else if parent.headerMap != nil {
+		copied, err := value.Clone(parent.headerMap)
+		if err != nil {
+			return err
+		}
+		if err := child.storeHeaders(child.rt.ToValue(copied)); err != nil {
+			return err
 		}
 	}
+	for name, fn := range parent.hookValues {
+		if err := child.storeHook(name, child.toJS(jsFunc{vm: parent, v: fn})); err != nil {
+			return err
+		}
+	}
+	return parent.copyBindings(child)
+}
+
+func (parent *VM) copyBindings(child *VM) error {
+	for name := range parent.vars {
+		if strings.HasPrefix(name, "__") {
+			continue
+		}
+		rv := parent.rt.Get(name)
+		if rv == nil || sobek.IsUndefined(rv) {
+			if parent.vars[name] == nil {
+				child.Set(name, nil)
+			}
+			continue
+		}
+		if sobek.IsNull(rv) {
+			child.Set(name, nil)
+			continue
+		}
+		if f, ok := parent.funcs[rv]; ok {
+			child.Set(name, f)
+			continue
+		}
+		if _, ok := sobek.AssertFunction(rv); ok {
+			child.Set(name, jsFunc{vm: parent, v: rv})
+			continue
+		}
+		if obj, ok := rv.(*sobek.Object); ok {
+			if view, ok := obj.Export().(*xmlView); ok && view.doc != nil {
+				copied, err := view.doc.CloneValue()
+				if err != nil {
+					return err
+				}
+				child.Set(name, copied)
+				continue
+			}
+		}
+		child.Set(name, parent.export(rv))
+	}
+	return nil
+}
+
+// SharedScope restores call arguments and helpers while preserving shared variables.
+func (v *VM) SharedScope() func() {
+	bindings := v.bindings
+	global := v.rt.GlobalObject()
+	names := []string{"__arg", "__loop", "__row", "__num"}
+	saved := make(map[string]sobek.Value, len(names))
+	for _, name := range names {
+		saved[name] = global.Get(name)
+	}
 	return func() {
-		if !shared {
-			restorePrototypes(v.rt, prototypes)
-			for _, name := range global.GetOwnPropertyNames() {
-				if _, exists := saved[name]; !exists {
-					_ = global.Delete(name)
-				}
-			}
-			for name, val := range saved {
+		for _, name := range names {
+			if val := saved[name]; val != nil {
 				_ = global.Set(name, val)
-			}
-			v.vars = vars
-			// Live values belong to this VM and are already validated.
-			if err := v.ApplyConfiguration(config); err != nil {
-				panic(err)
-			}
-		} else {
-			for _, name := range []string{"__arg", "__loop", "__row", "__num"} {
-				if val, exists := saved[name]; exists {
-					_ = global.Set(name, val)
-				} else {
-					_ = global.Delete(name)
-					delete(v.vars, name)
-				}
+			} else {
+				_ = global.Delete(name)
+				delete(v.vars, name)
 			}
 		}
 		_ = v.Bind(bindings)
 	}
-}
-
-func snapshotPrototypes(rt *sobek.Runtime) map[string]map[string]sobek.Value {
-	out := make(map[string]map[string]sobek.Value)
-	for _, name := range []string{"Object", "Array", "String"} {
-		obj := prototype(rt, name)
-		if obj == nil {
-			continue
-		}
-		saved := make(map[string]sobek.Value)
-		for _, key := range obj.Keys() {
-			saved[key] = obj.Get(key)
-		}
-		out[name] = saved
-	}
-	return out
-}
-
-func restorePrototypes(rt *sobek.Runtime, saved map[string]map[string]sobek.Value) {
-	for name, props := range saved {
-		proto := prototype(rt, name)
-		if proto == nil {
-			continue
-		}
-		for _, key := range proto.Keys() {
-			if _, ok := props[key]; !ok {
-				_ = proto.Delete(key)
-			}
-		}
-		for key, val := range props {
-			_ = proto.Set(key, val)
-		}
-	}
-}
-
-func prototype(rt *sobek.Runtime, name string) *sobek.Object {
-	ctor := rt.Get(name)
-	if ctor == nil || sobek.IsUndefined(ctor) {
-		return nil
-	}
-	proto := ctor.ToObject(rt).Get("prototype")
-	if proto == nil || sobek.IsUndefined(proto) {
-		return nil
-	}
-	return proto.ToObject(rt)
-}
-
-func cloneJS(rt *sobek.Runtime, val sobek.Value, seen map[*sobek.Object]*sobek.Object) sobek.Value {
-	obj, ok := val.(*sobek.Object)
-	if !ok {
-		return val
-	}
-	if view, ok := obj.Export().(*xmlView); ok && view.doc != nil {
-		copied, err := view.doc.CloneValue()
-		if err != nil {
-			panic(err)
-		}
-		return view.vm.xmlReadValue(copied)
-	}
-	if _, fn := sobek.AssertFunction(val); fn {
-		return val
-	}
-	if flag := obj.Get("__gi"); flag != nil && flag.ToBoolean() {
-		return val
-	}
-	if copied := seen[obj]; copied != nil {
-		return copied
-	}
-	var copied *sobek.Object
-	switch obj.ClassName() {
-	case "Array":
-		copied = rt.NewArray()
-	case "Object":
-		copied = rt.NewObject()
-	default:
-		return val
-	}
-	seen[obj] = copied
-	for _, key := range obj.Keys() {
-		_ = copied.Set(key, cloneJS(rt, obj.Get(key), seen))
-	}
-	if obj.ClassName() == "Array" {
-		_ = copied.Set("length", obj.Get("length"))
-	}
-	return copied
 }
 
 type FailureDecision struct {

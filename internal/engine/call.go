@@ -271,9 +271,21 @@ func (e *exec) callFeature(ctx context.Context, path string, arg any, stack []st
 	if err != nil {
 		return callResult{}, nil, err
 	}
-	restore := e.vm.Scope(sharedScope)
-	defer restore()
+	vm := e.vm
+	var stop func()
+	if sharedScope {
+		stop = e.vm.SharedScope()
+	} else {
+		isolated, release, err := e.vm.Isolated(ctx)
+		if err != nil {
+			return callResult{}, nil, err
+		}
+		stop = release
+		vm = isolated
+	}
+	defer stop()
 	opt := e.callOptions(stack)
+	opt.vm = vm
 	initial := e.vm.Vars()
 	vars := e.vm.Vars()
 	if vars == nil {
@@ -285,7 +297,7 @@ func (e *exec) callFeature(ctx context.Context, path string, arg any, stack []st
 	vars["__arg"] = arg
 	vars["__loop"] = int64(loop)
 	opt.Vars = vars
-	bindCallArg(arg, loop)(e.vm)
+	bindCallArg(arg, loop)(vm)
 	include := func(sc feature.Scenario) (bool, error) {
 		return !sc.IsSetup && selectedLine(sc, lines) && (selector == "" || feature.HasTag(sc.Tags, selector)) && feature.AllowsEnv(sc.Tags, e.opt.Env), nil
 	}
@@ -360,11 +372,11 @@ func (e *exec) callFeature(ctx context.Context, path string, arg any, stack []st
 		}
 		shared[name] = val
 	}
-	captured := sealedMap(e.vm, shared)
+	captured := sealedMap(vm, shared)
 	for name := range out {
 		out[name] = captured[name]
 	}
-	return callResult{vars: out, state: state, sharedVars: captured, config: e.vm.SealConfiguration(e.vm.Configuration()), cookies: state.jar.updates(cookieStart)}, called, nil
+	return callResult{vars: out, state: state, sharedVars: captured, config: vm.SealConfiguration(vm.Configuration()), cookies: state.jar.updates(cookieStart)}, called, nil
 }
 
 func sealedMap(vm *script.VM, in map[string]any) map[string]any {

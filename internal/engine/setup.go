@@ -28,9 +28,13 @@ func (e *exec) setup(name string, once bool) (any, error) {
 		if sc.Lead > 0 && sc.Lead <= len(sc.Steps) {
 			body.Steps = append([]feature.Step{}, sc.Steps[sc.Lead:]...)
 		}
-		restore := e.vm.Scope(false)
-		defer restore()
+		child, stop, err := e.vm.Isolated(ctx)
+		if err != nil {
+			return nil, err
+		}
+		defer stop()
 		opt := e.callOptions(e.stack)
+		opt.vm = child
 		res := runScenario(context.WithValue(ctx, setupCall{}, true), e.file, body, opt, nil)
 		if !res.Passed {
 			if res.Error != "" {

@@ -100,16 +100,53 @@ Scenario: object and table
 func TestAssignedCallIsolation(t *testing.T) {
 	dir := t.TempDir()
 	child := filepath.Join(dir, "child.feature")
-	if err := os.WriteFile(child, []byte("Feature: child\nScenario: child\n* eval Object.prototype.polluted = true\n* def sign = function(x){ return x + 1 }\n"), 0600); err != nil {
+	body := `Feature: child
+Scenario: child
+* eval let secret = 'hidden'
+* eval const fixed = 2
+* def seen = secret + fixed
+* def reveal = function(){ return secret }
+* eval Object.prototype.polluted = true
+* eval Object.defineProperty(Object.prototype, 'hidden', { value: true })
+* eval Array.prototype.push = function(){ return 0 }
+* def sign = function(x){ return x + 1 }
+`
+	if err := os.WriteFile(child, []byte(body), 0600); err != nil {
 		t.Fatal(err)
 	}
 	runRelease(t, filepath.Join(dir, "parent.feature"), `Feature: parent
 Scenario: isolation
 * def result = call read('child.feature')
+* def kind = typeof secret
+* match kind == 'undefined'
 * def leaked = ({}).polluted
 * match leaked != true
+* def hidden = ({}).hidden
+* match hidden != true
+* def pushed = [1].push(2)
+* match pushed == 2
+* match result.seen == 'hidden2'
+* def revealed = result.reveal()
+* match revealed == 'hidden'
 * def n = result.sign(2)
 * match n == 3
+`, engine.Options{})
+}
+
+func TestSetupRealmDoesNotLeak(t *testing.T) {
+	runRelease(t, "setup-realm.feature", `Feature: setup
+@setup
+Scenario: prepare
+* eval let setupSecret = 'nope'
+* eval Object.defineProperty(Array.prototype, 'marked', { value: true })
+* def ready = true
+Scenario: caller
+* def prepared = karate.setup()
+* match prepared.ready == true
+* def kind = typeof setupSecret
+* match kind == 'undefined'
+* def marked = [].marked
+* match marked != true
 `, engine.Options{})
 }
 

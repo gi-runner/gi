@@ -5,7 +5,7 @@ gi test examples/users.feature --var baseUrl=http://127.0.0.1:18080 \
   --report report.html --junit junit.xml --json report.json --cucumber cucumber.json
 ```
 
-The same flags work on `gi load`. Load HTML adds the latency table and the thresholds. It does not log every request.
+The same flags work on `gi load`. Load HTML adds the latency table, open-loop scheduled latency, missed and late starts, and the thresholds. It does not log every request. Scheduled latency runs from the due time until the HTTP response is recorded. It is not the HTTP percentile.
 
 ## HTML
 

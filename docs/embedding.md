@@ -30,7 +30,7 @@ for _, file := range results {
 
 Paths are files. Configuration is read from the first path. Packages under `internal` are not an extension API.
 
-`ssl`, `proxy`, and `connectTimeout` apply when the client's transport is an `*http.Transport`. gi clones it and keeps the connection pool. A call uses the scenario JavaScript runtime. Isolated call data is restored when the call returns. A live closure from the caller stays callable.
+`ssl`, `proxy`, and `connectTimeout` apply when the client's transport is an `*http.Transport`. gi clones it and keeps the connection pool. An assigned call and `setup` run in a new JavaScript realm seeded from the caller. The caller's bindings and built-ins stay as they were. A function returned from the call keeps the callee realm. A function from the caller remains callable and stops if that call's deadline fires.
 
 ## Register a helper
 

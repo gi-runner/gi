@@ -39,7 +39,7 @@ Expressions run in [Sobek](https://github.com/grafana/sobek), a pure-Go JavaScri
 
 `#(name)` inside a JSON or JavaScript literal is replaced with the variable before the expression runs.
 
-Each scenario has its own runtime. `vu` and `iter` are `1` in a functional run. Under a user load profile, `vu` is the virtual user and `iter` counts its loops, starting at 1. Under a rate profile, `vu` numbers each start and `iter` stays 1.
+Each scenario has its own runtime. An assigned `call` and `gi.setup()` run in a further realm; see [Suite](suite.md). `vu` and `iter` are `1` in a functional run. Under a user load profile, `vu` is the virtual user and `iter` counts its loops, starting at 1. Under a rate profile, `vu` numbers each start and `iter` stays 1.
 
 ## gi and karate
 

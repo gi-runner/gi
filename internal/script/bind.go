@@ -52,25 +52,65 @@ type Bindings struct {
 }
 
 func (v *VM) Bind(b Bindings) error {
+	if v.karate == nil {
+		if err := v.ctx.Err(); err != nil {
+			return err
+		}
+	}
 	v.bindings = b
 	v.root = b.Root
 	v.featureDir = b.FeatureDir
 	if v.karate != nil {
 		_ = v.karate.Set("env", b.Env)
-		v.bindRuntime()
+		if v.apiReady {
+			v.bindRuntime()
+		}
 		return nil
 	}
-	read := func(call sobek.FunctionCall) sobek.Value {
-		val, err := v.read(call.Argument(0).String())
-		if err != nil {
-			panic(v.rt.NewGoError(err))
+	v.karate = v.rt.NewObject()
+	_ = v.karate.Set("env", b.Env)
+	getter := v.rt.ToValue(func(sobek.FunctionCall) sobek.Value {
+		if !v.apiReady {
+			if err := v.initializeAPI(); err != nil {
+				panic(v.rt.NewGoError(err))
+			}
 		}
-		return val
+		return v.karate
+	})
+	for _, name := range []string{"gi", "karate"} {
+		setter := v.rt.ToValue(func(call sobek.FunctionCall) sobek.Value {
+			if err := v.rt.GlobalObject().DefineDataProperty(name, call.Argument(0), sobek.FLAG_TRUE, sobek.FLAG_TRUE, sobek.FLAG_TRUE); err != nil {
+				panic(v.rt.NewGoError(err))
+			}
+			return sobek.Undefined()
+		})
+		if err := v.rt.GlobalObject().DefineAccessorProperty(name, getter, setter, sobek.FLAG_TRUE, sobek.FLAG_TRUE); err != nil {
+			return err
+		}
 	}
-	obj := v.rt.NewObject()
-	v.karate = obj
-	_ = obj.Set("env", b.Env)
-	_ = obj.Set("read", read)
+	v.bindDriver()
+	_ = v.rt.Set("read", v.readCall)
+	return nil
+}
+
+func (v *VM) readCall(call sobek.FunctionCall) sobek.Value {
+	val, err := v.read(call.Argument(0).String())
+	if err != nil {
+		panic(v.rt.NewGoError(err))
+	}
+	return val
+}
+
+// initializeAPI runs under the VM lease, on first access to either API alias.
+func (v *VM) initializeAPI() (err error) {
+	v.apiReady = true
+	defer func() {
+		if err != nil {
+			v.apiReady = false
+		}
+	}()
+	obj := v.karate
+	_ = obj.Set("read", v.readCall)
 	_ = obj.Set("configure", func(call sobek.FunctionCall) sobek.Value {
 		if err := v.configure(call.Argument(0).String(), call.Argument(1), v.bindings.Configure); err != nil {
 			panic(v.rt.NewGoError(err))
@@ -158,14 +198,10 @@ func (v *VM) Bind(b Bindings) error {
 			return v.ToValue(got)
 		})
 	}
-	_ = v.rt.Set("gi", obj)
-	_ = v.rt.Set("karate", obj)
 	if err := v.bindHelpers(obj); err != nil {
 		return err
 	}
-	v.bindDriver()
 	v.bindRuntime()
-	_ = v.rt.Set("read", read)
 	return nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"runtime"
+	"runtime/metrics"
 	"slices"
 	"sort"
 	"strconv"
@@ -244,6 +245,11 @@ func (s *session) startUser(runCtx context.Context, wg *sync.WaitGroup, slots []
 }
 
 func (s *session) runOpen(runCtx context.Context) {
+	// Reuse bounded collectors: an arrival needs samples, not a fresh histogram.
+	collectors := make([]local, min(runtime.GOMAXPROCS(0), 32))
+	for i := range collectors {
+		collectors[i].samples = map[string]*hist{}
+	}
 	var wg sync.WaitGroup
 	for n := 0; ; n++ {
 		off, ok := s.plan.due(n)
@@ -278,12 +284,14 @@ func (s *session) runOpen(runCtx context.Context) {
 			} else {
 				defer s.inflight.Add(-1)
 			}
-			lu := &local{samples: map[string]*hist{}}
+			lu := &collectors[(id-1)%len(collectors)]
 			s.once(runCtx, runCtx, lu, due, id, 1)
-			s.fold(lu)
 		})
 	}
 	wg.Wait()
+	for i := range collectors {
+		s.fold(&collectors[i])
+	}
 }
 
 func (s *session) reserve() bool {
@@ -378,9 +386,9 @@ func (s *session) once(runCtx, userCtx context.Context, lu *local, due time.Time
 	if time.Now().Before(s.recordAt) {
 		return !stopped && runCtx.Err() == nil && time.Now().Before(s.end)
 	}
-	lu.iters++
-	if !res.Passed() {
-		lu.failIters++
+	failed := !res.Passed()
+	lu.recordIteration(failed)
+	if failed {
 		s.failures.Add(1)
 		lu.keep(res)
 	}
@@ -389,25 +397,18 @@ func (s *session) once(runCtx, userCtx context.Context, lu *local, due time.Time
 
 func (s *session) watch(ctx context.Context) {
 	cpu0, _ := osUsage()
-	var peakG atomic.Int64
-	var peakHeap atomic.Uint64
+	var peakG int
+	var peakHeap uint64
+	memory := []metrics.Sample{{Name: "/memory/classes/heap/objects:bytes"}}
 	sample := func() {
-		g := int64(runtime.NumGoroutine())
-		for {
-			prev := peakG.Load()
-			if g <= prev || peakG.CompareAndSwap(prev, g) {
-				break
-			}
-		}
-		var m runtime.MemStats
-		runtime.ReadMemStats(&m)
-		for {
-			prev := peakHeap.Load()
-			if m.HeapAlloc <= prev || peakHeap.CompareAndSwap(prev, m.HeapAlloc) {
-				break
-			}
+		peakG = max(peakG, runtime.NumGoroutine())
+		// ReadMemStats stops the world; resource sampling must not pause arrivals.
+		metrics.Read(memory)
+		if memory[0].Value.Kind() == metrics.KindUint64 {
+			peakHeap = max(peakHeap, memory[0].Value.Uint64())
 		}
 	}
+
 	sample()
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
@@ -420,10 +421,10 @@ func (s *session) watch(ctx context.Context) {
 				s.cpu = cpu1 - cpu0
 			}
 			if rss == 0 {
-				rss = peakHeap.Load()
+				rss = peakHeap
 			}
 			s.rss = rss
-			s.goroutines = int(peakG.Load())
+			s.goroutines = peakG
 			return
 		case <-ticker.C:
 			sample()
@@ -490,6 +491,15 @@ type local struct {
 	failIters int64
 	transport int64
 	failures  []engine.ScenarioResult
+}
+
+func (l *local) recordIteration(failed bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.iters++
+	if failed {
+		l.failIters++
+	}
 }
 
 func (l *local) add(ex engine.Exchange) {

@@ -41,13 +41,13 @@ function fn() {
 * callonce read('login.feature')
 ```
 
-`call` runs another feature in a scoped scenario VM, preserving ordinary JavaScript closures. `def result = call ...` returns the variables defined by the callee. A bare call also propagates changed JSON data and persistent HTTP settings (URL, request headers, auth, timeouts, redirect following, and response parsing settings). Transient request builders are cleared. Isolated calls fork the cookie jar; shared calls replay changes into the caller. `karate.call(true, path, arg)` requests shared scope; `karate.call(path, arg)` is isolated.
+`def result = call ...` runs the feature in its own JavaScript realm and returns the variables it defined. A function in that result keeps the callee's realm, including lexical bindings and built-in changes made there. A function that belongs to the caller still closes over the caller. That invocation stops when the isolated call's deadline fires, and the caller runtime then keeps its own deadline. A bare call shares the caller's runtime and propagates changed JSON data and persistent HTTP settings (URL, request headers, auth, timeouts, redirect following, and response parsing settings). Transient request builders are cleared. Isolated calls fork the cookie jar; shared calls replay changes into the caller. `karate.call(true, path, arg)` requests the shared runtime; `karate.call(path, arg)` uses a separate realm.
 
 The argument is an object or a list of objects. Object keys are bound as variables alongside `__arg`. List calls return a list of results and bind zero-based `__loop`; a single call uses `__loop = -1`. `child.feature:12` selects a scenario or outline by line; multiple lines use `:12:30`. `child.feature@tag` selects a tag, and `@tag` selects a scenario in the current file. Called features may use `@ignore`; setup and environment exclusions still apply. Excluded dynamic outlines are not evaluated.
 
 `callonce` runs once per calling feature and resolved target; the first call's argument wins. `karate.callSingle(path, arg)` runs once per suite and supports feature or JavaScript files. A `?suffix` gives a singleton a distinct cache key. Cached results are copied and may contain JSON data or native XML. A function in that result, and a `configure` header or hook function, keeps calling the runtime that created it. Scenario variables are live and shared, so a sibling function and a later assignment are still visible, and `null` stays `null`. A lexical `let` or `var` stays with the function. Calling it observes the caller's cancellation, and `karate.info` reports that caller. While it is inside `listen`, `pause`, `waitForHttp`, or `waitForPort`, another scenario can call back into that runtime. Native functions and live protocol handles are rejected. Normal feature and JavaScript calls are not restricted to JSON cache data.
 
-Config is inherited without re-executing config files. Shared calls propagate header/hook configuration and browser ownership; assigned calls restore caller scope. Cache hits replay cookie updates and call the original header and hook functions. Scopes are not separate JavaScript realms; top-level lexical declarations and intrinsic mutation are not fully isolated. During config bootstrap, re-entering the same feature singleton returns an empty object; ordinary recursive calls fail. Calls nest to a depth of 8. Hooks do not run inside called features.
+Config is inherited without re-executing config files. Shared calls propagate header/hook configuration and browser ownership. Assigned calls and setup keep the caller's lexical bindings and built-ins unchanged. Cache hits replay cookie updates and call the original header and hook functions. During config bootstrap, re-entering the same feature singleton returns an empty object; ordinary recursive calls fail. Calls nest to a depth of 8. Hooks do not run inside called features.
 
 The HTML report nests the called steps under the `call` step. See [Reports](reports.md).
 
@@ -85,7 +85,7 @@ Scenario: use it
   * def rows = gi.setupOnce().data
 ```
 
-`gi.setup()` runs the `@setup` scenario and returns a copy of its variables. `gi.setupOnce()` does that once per suite. The setup scenario's own steps run. Its background does not. A hook does not run inside setup, so a hook may call `gi.setupOnce()`. Setup cannot call setup.
+`gi.setup()` runs the `@setup` scenario in its own realm and returns the variables that scenario defined. Lexical bindings and built-in changes made there stay in that realm. `gi.setupOnce()` does that once per suite. The setup scenario's own steps run. Its background does not. A hook does not run inside setup, so a hook may call `gi.setupOnce()`. Setup cannot call setup.
 
 An unnamed `@setup` is the default. `gi.setup('name')` selects `@setup=name`.
 

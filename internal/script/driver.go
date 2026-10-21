@@ -55,7 +55,7 @@ func (v *VM) bindDriver() {
 	obj := v.rt.NewObject()
 	_ = obj.Set("__gi", true)
 	for _, name := range driverMethods {
-		fn := v.driverFunction(name, nil)
+		fn := v.rt.ToValue(v.driverFunction(name, nil))
 		_ = obj.Set(name, fn)
 		// Navigation methods are available on driver; element helpers also have
 		// the traditional Karate global form, e.g. waitFor('#name').input('Ada').

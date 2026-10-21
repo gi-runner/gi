@@ -99,4 +99,4 @@
     k.fail = function(message) {
         throw Error(message === undefined ? 'explicit failure' : String(message));
     };
-})(karate);
+});

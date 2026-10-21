@@ -2,6 +2,7 @@ package script
 
 import (
 	_ "embed"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -100,7 +101,15 @@ func (v *VM) bindHelpers(obj *sobek.Object) error {
 	_ = obj.Set("readAsString", func(ref string) (string, error) { b, err := v.Bytes(ref); return string(b), err })
 	_ = obj.Set("readAsBytes", v.Bytes)
 	_ = obj.Set("toBytes", func(x sobek.Value) []byte { return []byte(x.String()) })
-	if _, err := v.rt.RunProgram(helperProgram); err != nil {
+	initializer, err := v.rt.RunProgram(helperProgram)
+	if err != nil {
+		return fmt.Errorf("initialize built-in helpers: %w", err)
+	}
+	fn, ok := sobek.AssertFunction(initializer)
+	if !ok {
+		return errors.New("built-in helper initializer is not a function")
+	}
+	if _, err := fn(sobek.Undefined(), obj); err != nil {
 		return fmt.Errorf("initialize built-in helpers: %w", err)
 	}
 	return nil

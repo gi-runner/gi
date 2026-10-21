@@ -28,6 +28,7 @@ type VM struct {
 	ctx         context.Context //nolint:containedctx // a retained call cancels with the caller that leased this runtime
 	bindings    Bindings
 	karate      *sobek.Object
+	apiReady    bool
 	custom      []string
 	headerValue sobek.Value
 	hookValues  map[string]sobek.Value
@@ -50,6 +51,32 @@ func New() *VM {
 		return rt.ToValue(uuid.New().String())
 	})
 	return vm
+}
+
+// Isolated seeds a new realm with this VM's variables and callbacks.
+// Declarations and built-in changes in the child stay there. stop ends its lease.
+func (v *VM) Isolated(ctx context.Context) (*VM, func(), error) {
+	child := New()
+	if err := child.adopt(v); err != nil {
+		return nil, nil, err
+	}
+	linked, cancel := context.WithCancel(v.leasedContext(ctx))
+	stop, err := child.Watch(linked)
+	if err != nil {
+		cancel()
+		return nil, nil, err
+	}
+	return child, func() {
+		stop()
+		cancel()
+	}, nil
+}
+
+func (v *VM) leasedContext(ctx context.Context) context.Context {
+	if leaseFrom(ctx) != nil || leaseFrom(v.ctx) == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, runtimeLease{}, leaseFrom(v.ctx))
 }
 
 func (v *VM) Set(name string, val any) {
@@ -444,13 +471,11 @@ func (v *VM) arm(ctx context.Context, release func()) func() { //nolint:contextc
 }
 
 func (v *VM) run(src string) (sobek.Value, error) {
-	prog, err := sobek.Compile("expr", "("+src+")", false)
+	prog, err := programs.compile(src)
 	if err != nil {
-		prog, err = sobek.Compile("stmt", src, false)
-		if err != nil {
-			return nil, errors.New(firstLine(err.Error()))
-		}
+		return nil, errors.New(firstLine(err.Error()))
 	}
+
 	val, err := v.rt.RunProgram(prog)
 	if err != nil {
 		return nil, err

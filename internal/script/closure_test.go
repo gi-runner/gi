@@ -280,3 +280,38 @@ func TestNestedParkRestoresOuterHandoff(t *testing.T) {
 		}
 	}
 }
+
+func TestIsolatedParentCallbackDeadlineAndReuse(t *testing.T) {
+	parent := New()
+	ownerCtx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	stop, err := parent.Watch(ownerCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	fn, err := parent.Eval(`function(){while(true){}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent.Set("spin", fn)
+	childCtx, cancelChild := context.WithTimeout(ownerCtx, 25*time.Millisecond)
+	defer cancelChild()
+	child, release, err := parent.Isolated(childCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	_, err = child.Eval(`spin()`)
+	release()
+	if err == nil {
+		t.Fatal("infinite callback succeeded")
+	}
+	if time.Since(started) > time.Second {
+		t.Fatalf("callback ignored child deadline: %v", err)
+	}
+	got, err := parent.Eval(`1+1`)
+	if err != nil || got != int64(2) {
+		t.Fatalf("parent poisoned by child cancellation: %v %v", got, err)
+	}
+}

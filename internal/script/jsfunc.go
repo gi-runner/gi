@@ -99,7 +99,8 @@ type functionEnv struct{ values map[string]sobek.Value }
 func (v *VM) callCached(f jsFunc, args []sobek.Value) sobek.Value {
 	origin := f.vm
 	stop := func() {}
-	if origin != v {
+	// The caller's goroutine already owns this runtime, so taking its gate would wait on itself.
+	if origin != v && !leased(v.ctx, origin) {
 		var exported any
 		var undefined bool
 		var callErr error
@@ -131,6 +132,9 @@ func (v *VM) callCached(f jsFunc, args []sobek.Value) sobek.Value {
 			return v.toJS(exported)
 		}
 		stop = origin.arm(v.ctx, release)
+	} else if origin != v {
+		// Re-entry keeps the lease but must still observe this caller's deadline.
+		stop = origin.arm(v.ctx, func() {})
 	}
 	defer stop()
 	restore := origin.install(f.env)

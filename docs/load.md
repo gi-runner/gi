@@ -41,9 +41,11 @@ With no comment and no flag, the run is 10 virtual users for 10 seconds. `--rps`
 
 `--warmup` holds the opening level and discards those samples. The stages are the measured window.
 
-`--max-inflight` caps an open loop. A start that would pass the cap is not run. It counts as a missed start and a failed iteration. A start that begins more than 20ms after it was due counts as late. `schedP95` is the time from the scheduled start to the response, so a stall inside the runner shows up there. `p95` stays the HTTP call itself.
+`--max-inflight` caps an open loop. A start that would pass the cap is not run. It counts as a missed start and a failed iteration. `iterations` is completed iterations plus missed starts. A start that was accepted but does not begin before the window ends, and an iteration still in flight when the window ends, are neither completed nor missed. A start that begins more than 20ms after it was due counts as late. A miss is not also late.
 
-The summary also reports the runner's CPU time, the process max RSS, and the peak number of goroutines.
+`schedP95` is the time from the scheduled start until the HTTP response is recorded. It includes schedule lag and scenario work before that call. `p95` is only the HTTP call. They are different intervals.
+
+The summary reports the runner's CPU time (user plus system), the process maximum resident set when the OS provides it, and the peak number of goroutines observed during the run. When resident set is unavailable, the memory figure is the sampled peak of live heap objects.
 
 Under a user profile, `vu` is that user and `iter` counts its loops, both starting at 1. If a stage removes and later restarts a user, its iteration count continues. Under a rate profile, each start gets the next `vu` and `iter` stays 1. A user run reports the larger end of the population. A rate run reports the peak number of scenarios in flight.
 
@@ -64,7 +66,7 @@ The summary reports count, throughput, min, mean, p50, p95, and p99. Percentiles
 | `p50` `p95` `p99` `mean` `min` `max` | A duration: `200ms`, `1s`. |
 | `errorRate` | A percent: `1%`. |
 | `rps` | Requests per second. |
-| `schedP50` `schedP95` `schedP99` `schedMean` `schedMin` `schedMax` | Time from a scheduled start to the response. |
+| `schedP50` `schedP95` `schedP99` `schedMean` `schedMin` `schedMax` | Time from a scheduled start until the HTTP response is recorded. Includes schedule lag and earlier scenario work, not HTTP latency alone. |
 | `missed` `late` | Missed starts, and starts more than 20ms late. |
 
 Operators are `<`, `>`, `<=`, and `>=`. A failed threshold fails the run. Thresholds reject negative and non-finite values. JUnit records failed iterations even when all configured thresholds pass.

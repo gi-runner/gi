@@ -9,8 +9,20 @@ type lease struct {
 }
 
 func leaseFrom(ctx context.Context) *lease {
+	if ctx == nil {
+		return nil
+	}
 	l, _ := ctx.Value(runtimeLease{}).(*lease)
 	return l
+}
+
+func leased(ctx context.Context, vm *VM) bool {
+	for l := leaseFrom(ctx); l != nil; l = l.parent {
+		if l.vm == vm {
+			return true
+		}
+	}
+	return false
 }
 
 // acquire reports whether this call took the runtime. A call chain that already
