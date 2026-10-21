@@ -10,7 +10,16 @@ import (
 // Element is a locator, not a DOM node or a cross-runtime browser handle.
 type Element struct{ Locator string }
 
-var driverMethods = []string{"click", "input", "inputFile", "clear", "select", "focus", "scroll", "text", "html", "value", "attribute", "exists", "enabled", "locate", "locateAll", "waitFor", "waitForText", "waitForEnabled", "waitForUrl", "waitUntil", "script", "screenshot", "back", "forward", "refresh", "quit"}
+var driverMethods = []string{"click", "input", "inputFile", "clear", "select", "focus", "scroll", "text", "html", "value", "attribute", "exists", "enabled", "locate", "locateAll", "waitFor", "waitForText", "waitForEnabled", "waitForUrl", "waitUntil", "script", "screenshot", "back", "forward", "refresh", "quit", "frame", "dialog", "dialogText", "intercept", "window"}
+
+func driverGlobal(name string) bool {
+	switch name {
+	case "quit", "back", "forward", "refresh", "frame", "dialog", "dialogText", "intercept", "window":
+		return false
+	default:
+		return true
+	}
+}
 
 func (v *VM) driverCall(name string, args []any) sobek.Value {
 	if v.bindings.Driver == nil {
@@ -50,7 +59,7 @@ func (v *VM) bindDriver() {
 		_ = obj.Set(name, fn)
 		// Navigation methods are available on driver; element helpers also have
 		// the traditional Karate global form, e.g. waitFor('#name').input('Ada').
-		if name != "quit" && name != "back" && name != "forward" && name != "refresh" {
+		if driverGlobal(name) {
 			_ = v.rt.Set(name, fn)
 		}
 	}

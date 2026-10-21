@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 
@@ -23,11 +24,12 @@ import (
 )
 
 type link struct {
-	conn     *grpc.ClientConn
-	metadata metadata.MD
-	mu       sync.Mutex
-	services map[string]protoreflect.ServiceDescriptor
-	streams  []*rpcStream
+	conn       *grpc.ClientConn
+	metadata   metadata.MD
+	mu         sync.Mutex
+	services   map[string]protoreflect.ServiceDescriptor
+	descriptor bool
+	streams    []*rpcStream
 }
 
 func Dial(ctx context.Context, spec map[string]any) (engine.Link, error) {
@@ -50,7 +52,22 @@ func Dial(ctx context.Context, spec map[string]any) (engine.Link, error) {
 	if err != nil {
 		return engine.Link{}, err
 	}
-	l := &link{conn: conn, metadata: headers, services: make(map[string]protoreflect.ServiceDescriptor)}
+	services := map[string]protoreflect.ServiceDescriptor{}
+	described := false
+	if raw, ok := spec["descriptor"]; ok {
+		path, ok := raw.(string)
+		if !ok || path == "" {
+			_ = conn.Close()
+			return engine.Link{}, errors.New("grpc descriptor must be a file path")
+		}
+		services, err = servicesFromDescriptor(path)
+		if err != nil {
+			_ = conn.Close()
+			return engine.Link{}, err
+		}
+		described = true
+	}
+	l := &link{conn: conn, metadata: headers, services: services, descriptor: described}
 	return engine.Link{Call: l.Call, Open: l.Open, Close: l.Close}, nil
 }
 
@@ -221,6 +238,9 @@ func (l *link) service(ctx context.Context, name string) (protoreflect.ServiceDe
 	if service := l.services[name]; service != nil {
 		return service, nil
 	}
+	if l.descriptor {
+		return nil, fmt.Errorf("grpc service %s is not in the descriptor", name)
+	}
 	files, err := descriptors(ctx, l.conn, name)
 	if err != nil {
 		return nil, err
@@ -235,6 +255,34 @@ func (l *link) service(ctx context.Context, name string) (protoreflect.ServiceDe
 	}
 	l.services[name] = service
 	return service, nil
+}
+
+func servicesFromDescriptor(path string) (map[string]protoreflect.ServiceDescriptor, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	set := &descriptorpb.FileDescriptorSet{}
+	if err := proto.Unmarshal(raw, set); err != nil {
+		return nil, fmt.Errorf("grpc descriptor: %w", err)
+	}
+	files, err := protodesc.NewFiles(set)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]protoreflect.ServiceDescriptor{}
+	files.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
+		svcs := fd.Services()
+		for i := range svcs.Len() {
+			svc := svcs.Get(i)
+			out[string(svc.FullName())] = svc
+		}
+		return true
+	})
+	if len(out) == 0 {
+		return nil, errors.New("grpc descriptor has no services")
+	}
+	return out, nil
 }
 
 func descriptors(ctx context.Context, conn *grpc.ClientConn, symbol string) (*protoregistry.Files, error) {

@@ -117,6 +117,131 @@ Scenario: browser
 	}
 }
 
+func TestFramesDialogsWindowsAndIntercept(t *testing.T) {
+	if !chromePresent() {
+		t.Skip("chrome is not installed")
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/other", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<!doctype html><title>Other</title><button id="load" onclick="fetch('/secret').then(r => r.text()).then(t => document.getElementById('out').textContent = t)">load</button><div id="out"></div>`))
+	})
+	mux.HandleFunc("/secret", func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "nope", http.StatusNotFound)
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<!doctype html><title>One</title><iframe id="box" srcdoc="<p id='inner'>inside</p>"></iframe><button id="ask" onclick="document.getElementById('out').textContent = confirm('leave?') ? 'yes' : 'no'">ask</button><button id="load" onclick="fetch('/secret').then(r => r.text()).then(t => document.getElementById('out').textContent = t)">load</button><div id="out"></div>`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	f, err := feature.Parse("page.feature", `Feature: page
+Scenario: pieces
+* driver baseUrl + '/'
+* driver.frame('#box')
+* match text('#inner') == 'inside'
+* driver.frame()
+* assert !exists('#inner')
+* driver.dialog(false)
+* click('#ask')
+* match text('#out') == 'no'
+* match driver.dialogText() == 'leave?'
+* driver.intercept('/secret', { status: 200, body: 'hidden' })
+* click('#load')
+* waitForText('#out', 'hidden')
+* driver.window(otherUrl)
+* match driver.title == 'Other'
+* click('#load')
+* waitForText('#out', 'hidden')
+* def tabs = driver.window()
+* def back = tabs.find(function(t){ return t.title == 'One' }).index
+* driver.window(back)
+* match driver.title == 'One'
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+	res, err := engine.RunFile(ctx, f, engine.Options{
+		NewPage: Open,
+		Vars:    map[string]any{"baseUrl": server.URL, "otherUrl": server.URL + "/other"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Passed() {
+		for _, sc := range res.Scenarios {
+			if !sc.Passed {
+				t.Error(sc.Error)
+			}
+		}
+	}
+}
+
+func TestWindowOperationStopsAtTheStepDeadline(t *testing.T) {
+	if !chromePresent() {
+		t.Skip("chrome is not installed")
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/stall" {
+			timer := time.NewTimer(5 * time.Second)
+			defer timer.Stop()
+			select {
+			case <-timer.C:
+			case <-r.Context().Done():
+			}
+			return
+		}
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<!doctype html><title>Ready</title>`))
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+	opened, err := Open(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = opened.Close() }()
+	p, ok := opened.(*page)
+	if !ok {
+		t.Fatalf("%T", opened)
+	}
+	if err := p.Open(ctx, server.URL+"/"); err != nil {
+		t.Fatal(err)
+	}
+	step, stop := context.WithTimeout(ctx, 40*time.Millisecond)
+	defer stop()
+	started := time.Now()
+	err = p.activeTab().run(step, func(c context.Context) error {
+		<-c.Done()
+		return c.Err()
+	})
+	if err == nil || time.Since(started) > 500*time.Millisecond {
+		t.Fatalf("tab operation: %v after %s", err, time.Since(started))
+	}
+	stall, stopStall := context.WithTimeout(ctx, 40*time.Millisecond)
+	defer stopStall()
+	started = time.Now()
+	err = p.openWindow(stall, server.URL+"/stall")
+	if err == nil || time.Since(started) > 500*time.Millisecond {
+		t.Fatalf("window open: %v after %s", err, time.Since(started))
+	}
+	if len(p.tabs) != 1 {
+		t.Fatalf("failed open left %d tabs", len(p.tabs))
+	}
+	if err := p.openWindow(ctx, server.URL+"/ready"); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.useWindow(ctx, 0); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.tabs) != 2 {
+		t.Fatalf("switching attached the target again: %d tabs", len(p.tabs))
+	}
+}
+
 func TestFeatureFileUpload(t *testing.T) {
 	if !chromePresent() {
 		t.Skip("chrome is not installed")

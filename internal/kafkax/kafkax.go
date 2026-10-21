@@ -10,10 +10,17 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
+type record struct {
+	value string
+	raw   *kgo.Record
+}
+
 type link struct {
 	cl      *kgo.Client
 	topic   string
-	pending []string
+	group   bool
+	pending []record
+	commit  func(context.Context, *kgo.Record) error
 }
 
 func Dial(ctx context.Context, spec map[string]any) (engine.Link, error) {
@@ -33,11 +40,24 @@ func Dial(ctx context.Context, spec map[string]any) (engine.Link, error) {
 	if err != nil {
 		return engine.Link{}, err
 	}
+	offset, err := consumeOffset(spec["offset"])
+	if err != nil {
+		return engine.Link{}, err
+	}
+	group := value.Sprint(spec["group"])
+	if _, ok := spec["group"]; ok {
+		if _, ok := spec["group"].(string); !ok || group == "" {
+			return engine.Link{}, errors.New("kafka group must be a nonempty string")
+		}
+	}
 	opts := []kgo.Opt{
 		kgo.SeedBrokers(brokers...),
 		kgo.DefaultProduceTopic(topic),
 		kgo.ConsumeTopics(topic),
-		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
+		kgo.ConsumeResetOffset(offset),
+	}
+	if group != "" {
+		opts = append(opts, kgo.ConsumerGroup(group))
 	}
 	if mech != nil {
 		opts = append(opts, kgo.SASL(mech))
@@ -49,7 +69,10 @@ func Dial(ctx context.Context, spec map[string]any) (engine.Link, error) {
 	if err != nil {
 		return engine.Link{}, err
 	}
-	l := &link{cl: cl, topic: topic}
+	l := &link{cl: cl, topic: topic, group: group != ""}
+	l.commit = func(ctx context.Context, rec *kgo.Record) error {
+		return cl.CommitRecords(ctx, rec)
+	}
 	return engine.Link{Send: l.Send, Receive: l.Receive, Close: l.Close}, nil
 }
 
@@ -66,33 +89,64 @@ func (l *link) Send(ctx context.Context, v any) error {
 }
 
 func (l *link) Receive(ctx context.Context) (any, error) {
-	if len(l.pending) > 0 {
-		v := l.pending[0]
-		l.pending = l.pending[1:]
-		return v, nil
+	if err := l.fill(ctx); err != nil {
+		return nil, err
 	}
-	for {
+	item := l.pending[0]
+	if err := l.ack(ctx, item.raw); err != nil {
+		return nil, err
+	}
+	l.pending = l.pending[1:]
+	return item.value, nil
+}
+
+func (l *link) fill(ctx context.Context) error {
+	for len(l.pending) == 0 {
 		fetches := l.cl.PollFetches(ctx)
 		if errs := fetches.Errors(); len(errs) > 0 {
-			return nil, errs[0].Err
+			return errs[0].Err
 		}
-		var batch []string
 		fetches.EachRecord(func(r *kgo.Record) {
-			batch = append(batch, string(r.Value))
+			l.pending = append(l.pending, record{value: string(r.Value), raw: r})
 		})
-		if len(batch) > 0 {
-			l.pending = batch[1:]
-			return batch[0], nil
-		}
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
+		if len(l.pending) == 0 && ctx.Err() != nil {
+			return ctx.Err()
 		}
 	}
+	return nil
+}
+
+func (l *link) ack(ctx context.Context, rec *kgo.Record) error {
+	if !l.group || rec == nil {
+		return nil
+	}
+	return l.commit(ctx, rec)
 }
 
 func (l *link) Close() error {
 	l.cl.Close()
 	return nil
+}
+
+func consumeOffset(v any) (kgo.Offset, error) {
+	if v == nil {
+		return kgo.NewOffset().AtStart(), nil
+	}
+	if s, ok := v.(string); ok {
+		switch strings.ToLower(s) {
+		case "start", "earliest":
+			return kgo.NewOffset().AtStart(), nil
+		case "end", "latest":
+			return kgo.NewOffset().AtEnd(), nil
+		default:
+			return kgo.Offset{}, errors.New("kafka offset must be start, end, or an integer")
+		}
+	}
+	n, ok := value.AsInt(v)
+	if !ok || n < 0 {
+		return kgo.Offset{}, errors.New("kafka offset must be start, end, or an integer")
+	}
+	return kgo.NewOffset().At(int64(n)), nil
 }
 
 func hosts(v any) []string {

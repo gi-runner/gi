@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
 	reflectionv1 "google.golang.org/grpc/reflection/grpc_reflection_v1"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
@@ -310,11 +311,112 @@ func echoNotes(note protoreflect.MessageDescriptor) grpc.StreamHandler {
 	}
 }
 
+func TestDescriptorFileWithoutReflection(t *testing.T) {
+	file := sayFile(t)
+	note := file.Messages().ByName("Note")
+	raw, err := proto.Marshal(&descriptorpb.FileDescriptorSet{
+		File: []*descriptorpb.FileDescriptorProto{protodesc.ToFileDescriptorProto(file)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "echo.pb")
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := grpc.NewServer()
+	server.RegisterService(&grpc.ServiceDesc{
+		ServiceName: "gi.echo.Echo",
+		Methods: []grpc.MethodDesc{{
+			MethodName: "Say",
+			Handler: func(_ any, _ context.Context, dec func(any) error, _ grpc.UnaryServerInterceptor) (any, error) {
+				in := dynamicpb.NewMessage(note)
+				if err := dec(in); err != nil {
+					return nil, err
+				}
+				out := dynamicpb.NewMessage(note)
+				out.Set(note.Fields().ByName("text"), in.Get(note.Fields().ByName("text")))
+				return out, nil
+			},
+		}},
+	}, nil)
+	done := make(chan error, 1)
+	go func() { done <- server.Serve(listener) }()
+	t.Cleanup(func() { server.Stop(); <-done })
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	addr := listener.Addr().String()
+	bare, err := Dial(ctx, map[string]any{"addr": addr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bare.Call(ctx, "gi.echo.Echo/Say", map[string]any{"text": "hi"}); err == nil {
+		t.Fatal("reflection succeeded against a server with no reflection")
+	}
+	_ = bare.Close()
+	link, err := Dial(ctx, map[string]any{"addr": addr, "descriptor": path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = link.Close() }()
+	got, err := link.Call(ctx, "gi.echo.Echo/Say", map[string]any{"text": "hi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	noteOut, _ := value.AsMap(got)
+	if noteOut["text"] != "hi" {
+		t.Fatalf("%#v", got)
+	}
+	if _, err := link.Call(ctx, "missing.Service/Nope", map[string]any{}); err == nil {
+		t.Fatal("accepted a service that is not in the descriptor")
+	}
+	junk := filepath.Join(t.TempDir(), "junk.pb")
+	if err := os.WriteFile(junk, []byte("not a descriptor"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Dial(ctx, map[string]any{"addr": addr, "descriptor": junk}); err == nil {
+		t.Fatal("accepted a descriptor that is not a FileDescriptorSet")
+	}
+}
+
+func sayFile(t *testing.T) protoreflect.FileDescriptor {
+	t.Helper()
+	kind := descriptorpb.FieldDescriptorProto_TYPE_STRING
+	label := descriptorpb.FieldDescriptorProto_LABEL_OPTIONAL
+	fd := &descriptorpb.FileDescriptorProto{
+		Name:    new("say.proto"),
+		Package: new("gi.echo"),
+		Syntax:  new("proto3"),
+		MessageType: []*descriptorpb.DescriptorProto{{
+			Name: new("Note"),
+			Field: []*descriptorpb.FieldDescriptorProto{{
+				Name: new("text"), JsonName: new("text"), Number: new(int32(1)), Label: &label, Type: &kind,
+			}},
+		}},
+		Service: []*descriptorpb.ServiceDescriptorProto{{
+			Name: new("Echo"),
+			Method: []*descriptorpb.MethodDescriptorProto{{
+				Name: new("Say"), InputType: new(".gi.echo.Note"), OutputType: new(".gi.echo.Note"),
+			}},
+		}},
+	}
+	file, err := protodesc.NewFile(fd, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return file
+}
+
 func TestInvalidTLSAndMetadata(t *testing.T) {
 	for _, spec := range []map[string]any{
 		{"addr": "localhost:1", "tls": "yes"},
 		{"addr": "localhost:1", "tls": map[string]any{"cert": "only-cert"}},
 		{"addr": "localhost:1", "metadata": "token"},
+		{"addr": "localhost:1", "descriptor": 1},
 	} {
 		if _, err := Dial(t.Context(), spec); err == nil {
 			t.Errorf("accepted invalid configuration: %#v", spec)
