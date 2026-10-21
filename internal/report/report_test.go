@@ -38,7 +38,8 @@ func TestWritesHTMLJSONAndJUnit(t *testing.T) {
 			}},
 		}},
 		Load: &load.Result{
-			VUs: 2, Iterations: 10, Requests: 20, Elapsed: time.Second, Passed: true,
+			Profile: "constant users 2",
+			VUs:     2, Iterations: 10, Requests: 20, Elapsed: time.Second, Passed: true,
 			Overall:    load.Stats{P50: time.Millisecond, P95: 2 * time.Millisecond, P99: 3 * time.Millisecond},
 			Endpoints:  []load.Endpoint{{Name: "POST /users", Count: 10, Stats: load.Stats{P95: 2 * time.Millisecond}}},
 			Thresholds: []load.Threshold{{Text: "p95 < 200ms", Passed: true, Actual: "2ms"}},
@@ -59,7 +60,7 @@ func TestWritesHTMLJSONAndJUnit(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := string(b)
-	for _, want := range []string{"POST /users", "create", "Content-Type: application/json", html.EscapeString("\"name\": \"Ada\"")} {
+	for _, want := range []string{"POST /users", "create", "constant users 2", "Content-Type: application/json", html.EscapeString("\"name\": \"Ada\"")} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("report missing %q", want)
 		}

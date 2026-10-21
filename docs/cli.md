@@ -32,10 +32,15 @@ Flags may follow the file path. `gi test users.feature --var baseUrl=http://127.
 
 | Flag | Meaning |
 | --- | --- |
-| `--vus n` | Virtual users. Overrides `# gi-load: vus=`. |
-| `--duration 10s` | Measured window. |
+| `--vus n` | Virtual users, each looping the scenario. Default 10. |
+| `--vus-to n` | Ramp concurrent users from `--vus` to n across warmup and the window. |
+| `--rate n` | Scenario starts per second. Earlier starts keep running. |
+| `--rate-to n` | Ramp the start rate from `--rate` to n. |
+| `--stage spec` | Repeatable segment, such as `users=1:40 duration=30s` or `spike rate=500 duration=10s`. |
+| `--max-inflight n` | Open-loop cap. A start past the cap is a missed start. |
+| `--duration 10s` | Measured window. Stages carry their own durations. |
 | `--warmup 0s` | Unmeasured time before the window. |
-| `--rps n` | Request-rate cap. `0` is closed-loop. |
+| `--rps n` | Cap on HTTP calls. `0` means no cap. |
 | `--threshold 'p95 < 200ms'` | Repeatable. Also `errorRate` and `rps`. |
 
 ## mock

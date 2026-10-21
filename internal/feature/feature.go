@@ -3,7 +3,9 @@ package feature
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"strconv"
@@ -25,11 +27,19 @@ type File struct {
 }
 
 type LoadSpec struct {
-	VUs        int
-	Duration   time.Duration
-	RPS        int
-	Warmup     time.Duration
-	Thresholds []string
+	VUs         int
+	VUsTo       int
+	UsersToSet  bool
+	Rate        float64
+	RateSet     bool
+	RateTo      float64
+	RateToSet   bool
+	StageText   []string
+	MaxInFlight int
+	Duration    time.Duration
+	RPS         int
+	Warmup      time.Duration
+	Thresholds  []string
 }
 
 type Scenario struct {
@@ -140,6 +150,9 @@ func Parse(path, source string) (*File, error) {
 	}
 	for _, c := range doc.Comments {
 		applyLoadComment(&f.Load, c.Text)
+	}
+	if err := f.Load.validate(); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	labels := commentLabels(doc.Comments)
 	if err := walkFeature(doc.Feature, f, nil, labels); err != nil {
@@ -452,6 +465,12 @@ func applyLoadComment(spec *LoadSpec, raw string) {
 		return
 	}
 	rest = strings.TrimSpace(rest)
+	if after, ok0 := strings.CutPrefix(rest, "stage"); ok0 {
+		if st := strings.TrimSpace(after); st != "" {
+			spec.StageText = append(spec.StageText, st)
+		}
+		return
+	}
 	if after, ok0 := strings.CutPrefix(rest, "threshold"); ok0 {
 		th := strings.TrimSpace(after)
 		if th != "" {
@@ -469,6 +488,11 @@ func applyLoadComment(spec *LoadSpec, raw string) {
 			if n, err := strconv.Atoi(v); err == nil {
 				spec.VUs = n
 			}
+		case "vusto":
+			if n, err := strconv.Atoi(v); err == nil {
+				spec.VUsTo = n
+				spec.UsersToSet = true
+			}
 		case "duration":
 			if d, err := time.ParseDuration(v); err == nil {
 				spec.Duration = d
@@ -477,12 +501,52 @@ func applyLoadComment(spec *LoadSpec, raw string) {
 			if n, err := strconv.Atoi(v); err == nil {
 				spec.RPS = n
 			}
+		case "rate":
+			if n, err := strconv.ParseFloat(v, 64); err == nil {
+				spec.Rate = n
+				spec.RateSet = true
+			}
+		case "rateto":
+			if n, err := strconv.ParseFloat(v, 64); err == nil {
+				spec.RateTo = n
+				spec.RateToSet = true
+			}
 		case "warmup":
 			if d, err := time.ParseDuration(v); err == nil {
 				spec.Warmup = d
 			}
+		case "maxinflight":
+			if n, err := strconv.Atoi(v); err == nil {
+				spec.MaxInFlight = n
+			}
 		}
 	}
+}
+
+func (spec LoadSpec) validate() error {
+	if spec.VUs < 0 || spec.VUsTo < 0 || spec.RPS < 0 || spec.Rate < 0 || spec.RateTo < 0 ||
+		math.IsNaN(spec.Rate) || math.IsInf(spec.Rate, 0) || math.IsNaN(spec.RateTo) || math.IsInf(spec.RateTo, 0) {
+		return errors.New("gi-load values must be finite and nonnegative")
+	}
+	if (spec.VUs > 0 || spec.UsersToSet) && (spec.RateSet || spec.Rate > 0 || spec.RateToSet) {
+		return errors.New("gi-load sets both virtual users and a start rate")
+	}
+	if len(spec.StageText) > 0 && (spec.VUs > 0 || spec.UsersToSet || spec.RateSet || spec.Rate > 0 || spec.RateToSet) {
+		return errors.New("gi-load stages replace virtual users and a start rate")
+	}
+	if spec.MaxInFlight < 0 {
+		return errors.New("gi-load values must be finite and nonnegative")
+	}
+	if spec.RateSet || spec.RateToSet {
+		to := spec.Rate
+		if spec.RateToSet {
+			to = spec.RateTo
+		}
+		if spec.Rate == 0 && to == 0 {
+			return errors.New("start rate is zero")
+		}
+	}
+	return nil
 }
 
 func rowValues(row map[string]string) map[string]any {

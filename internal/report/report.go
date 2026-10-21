@@ -209,6 +209,8 @@ type httpView struct {
 }
 
 type loadView struct {
+	Profile          string   `json:"profile,omitempty"`
+	Open             bool     `json:"open,omitempty"`
 	VUs              int      `json:"vus"`
 	Iterations       int64    `json:"iterations"`
 	FailedIterations int64    `json:"failedIterations"`
@@ -223,6 +225,12 @@ type loadView struct {
 	Mean             string   `json:"mean"`
 	Min              string   `json:"min"`
 	Max              string   `json:"max"`
+	SchedP95         string   `json:"schedP95,omitempty"`
+	MissedStarts     int64    `json:"missedStarts,omitempty"`
+	LateStarts       int64    `json:"lateStarts,omitempty"`
+	CPUMS            float64  `json:"cpuMs,omitempty"`
+	RSS              uint64   `json:"rss,omitempty"`
+	Goroutines       int      `json:"goroutines,omitempty"`
 	Endpoints        []epView `json:"endpoints"`
 	Thresholds       []thView `json:"thresholds"`
 	Failures         []scView `json:"failures,omitempty"`
@@ -418,6 +426,8 @@ func loadViewOf(ld load.Result) loadView {
 		sec = 1
 	}
 	lv := loadView{
+		Profile:          ld.Profile,
+		Open:             ld.Open,
 		VUs:              ld.VUs,
 		Iterations:       ld.Iterations,
 		FailedIterations: ld.FailedIterations,
@@ -432,6 +442,12 @@ func loadViewOf(ld load.Result) loadView {
 		Mean:             ld.Overall.Mean.String(),
 		Min:              ld.Overall.Min.String(),
 		Max:              ld.Overall.Max.String(),
+		SchedP95:         ld.Scheduled.P95.String(),
+		MissedStarts:     ld.MissedStarts,
+		LateStarts:       ld.LateStarts,
+		CPUMS:            float64(ld.CPU) / float64(time.Millisecond),
+		RSS:              ld.RSS,
+		Goroutines:       ld.Goroutines,
 	}
 	for _, ep := range ld.Endpoints {
 		lv.Endpoints = append(lv.Endpoints, epView{
@@ -510,7 +526,8 @@ const htmlPage = `<!DOCTYPE html>
   {{range .Loads}}
   <h2>Load</h2>
   <div class="row">
-    <div class="card"><span class="dim">virtual users</span><b>{{.VUs}}</b></div>
+    {{if .Profile}}<div class="card"><span class="dim">profile</span><b>{{.Profile}}</b></div>{{end}}
+    <div class="card"><span class="dim">{{if .Open}}peak in flight{{else}}virtual users{{end}}</span><b>{{.VUs}}</b></div>
     <div class="card"><span class="dim">iterations</span><b>{{.Iterations}}</b></div>
     <div class="card"><span class="dim">requests</span><b>{{.Requests}}</b></div>
     <div class="card"><span class="dim">req/s</span><b>{{fmtrps .RPS}}</b></div>
@@ -521,6 +538,10 @@ const htmlPage = `<!DOCTYPE html>
     <div class="card"><span class="dim">p95</span><b>{{.P95}}</b></div>
     <div class="card"><span class="dim">p99</span><b>{{.P99}}</b></div>
     <div class="card"><span class="dim">mean</span><b>{{.Mean}}</b></div>
+    {{if .Open}}<div class="card"><span class="dim">scheduled p95</span><b>{{.SchedP95}}</b></div>{{end}}
+    <div class="card"><span class="dim">missed starts</span><b>{{.MissedStarts}}</b></div>
+    <div class="card"><span class="dim">cpu ms</span><b>{{printf "%.0f" .CPUMS}}</b></div>
+    <div class="card"><span class="dim">goroutines</span><b>{{.Goroutines}}</b></div>
   </div>
   {{if .Thresholds}}
   <h2>Thresholds</h2>

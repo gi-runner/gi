@@ -7,6 +7,41 @@ import (
 	"time"
 )
 
+func TestHistogramFailsClosedAgainstExactRanks(t *testing.T) {
+	exact := &hist{}
+	var samples []int64
+	for i := int64(1); i <= 31; i++ {
+		exact.add(i)
+		samples = append(samples, i)
+	}
+	for _, p := range []float64{0.50, 0.95, 0.99} {
+		got := exact.at(p)
+		want := nearestRank(samples, p)
+		if got != want {
+			t.Fatalf("p=%v got %d exact %d below 32ns buckets are exact", p, got, want)
+		}
+	}
+
+	wide := &hist{}
+	samples = samples[:0]
+	for i := int64(1); i <= 5000; i++ {
+		ns := i * 10_000
+		wide.add(ns)
+		samples = append(samples, ns)
+	}
+	for _, p := range []float64{0.50, 0.95, 0.99} {
+		got := wide.at(p)
+		want := nearestRank(samples, p)
+		if got < want {
+			t.Fatalf("p=%v histogram %d is under the exact rank %d", p, got, want)
+		}
+		slack := want/32 + 1
+		if got-want > slack {
+			t.Fatalf("p=%v histogram %d is more than 1/32 above exact %d", p, got, want)
+		}
+	}
+}
+
 func TestHistStaysInsideMinMax(t *testing.T) {
 	var h hist
 	h.add(int64(time.Millisecond))
@@ -49,4 +84,12 @@ func TestHistogramPercentileErrorBound(t *testing.T) {
 			t.Errorf("p=%v: %d outside bound for %d", p, got, exact)
 		}
 	}
+}
+
+func nearestRank(samples []int64, p float64) int64 {
+	sorted := slices.Clone(samples)
+	slices.Sort(sorted)
+	rank := int(math.Ceil(p * float64(len(sorted))))
+	rank = min(max(rank, 1), len(sorted))
+	return sorted[rank-1]
 }
