@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/maphash"
 	"math"
 	"net/http"
 	"runtime"
@@ -23,28 +24,29 @@ import (
 )
 
 type Config struct {
-	VUs         int
-	VUsTo       int
-	UsersToSet  bool
-	Rate        float64
-	RateSet     bool
-	RateTo      float64
-	RateToSet   bool
-	StageText   []string
-	Stages      []Stage
-	MaxInFlight int
-	Duration    time.Duration
-	Warmup      time.Duration
-	RPS         int
-	Thresholds  []string
-	Vars        map[string]any
-	Client      *http.Client
-	Tag         string
-	Timeout     time.Duration
-	Env         string
-	Suite       *suite.Suite
-	Dial        func(context.Context, string, map[string]any) (engine.Link, error)
-	NewPage     func(context.Context) (engine.Page, error)
+	VUs          int
+	VUsTo        int
+	UsersToSet   bool
+	Rate         float64
+	RateSet      bool
+	RateTo       float64
+	RateToSet    bool
+	StageText    []string
+	Stages       []Stage
+	MaxInFlight  int
+	MaxEndpoints int
+	Duration     time.Duration
+	Warmup       time.Duration
+	RPS          int
+	Thresholds   []string
+	Vars         map[string]any
+	Client       *http.Client
+	Tag          string
+	Timeout      time.Duration
+	Env          string
+	Suite        *suite.Suite
+	Dial         func(context.Context, string, map[string]any) (engine.Link, error)
+	NewPage      func(context.Context) (engine.Page, error)
 }
 
 type Result struct {
@@ -57,6 +59,8 @@ type Result struct {
 	FailedIterations int64
 	Requests         int64
 	TransportErrors  int64
+	EndpointLimit    int
+	EndpointOverflow int64
 	Endpoints        []Endpoint
 	Thresholds       []Threshold
 	Passed           bool
@@ -129,7 +133,9 @@ func Run(ctx context.Context, f *feature.File, cfg Config) (Result, error) {
 		recordAt: started.Add(cfg.Warmup),
 		end:      started.Add(pl.window()),
 		th:       thresholds,
+		stop:     stop,
 	}
+	s.initMetrics()
 	if cfg.RPS > 0 {
 		s.limiter = newBucket(cfg.RPS)
 		defer s.limiter.ticker.Stop()
@@ -168,9 +174,11 @@ type session struct {
 	rss        uint64
 	goroutines int
 	errMu      sync.Mutex
-	runErrs    []error
-	accMu      sync.Mutex
-	acc        local
+	runErr     error
+	stop       context.CancelFunc
+	collectors []collector
+	endpoints  endpointNames
+	metricSeed maphash.Seed
 }
 
 type userSlot struct {
@@ -230,11 +238,10 @@ func (s *session) startUser(runCtx context.Context, wg *sync.WaitGroup, slots []
 	userCtx, stop := context.WithCancel(runCtx)
 	done := make(chan struct{})
 	slots[id].stop, slots[id].done = stop, done
-	lu := &local{samples: map[string]*hist{}}
+	lu := &s.collectors[id%len(s.collectors)]
 	wg.Go(func() {
 		defer close(done)
 		defer stop()
-		defer s.fold(lu)
 		// Only this worker owns the counter; a replacement waits for done.
 		for {
 			slots[id].iterations++
@@ -246,11 +253,6 @@ func (s *session) startUser(runCtx context.Context, wg *sync.WaitGroup, slots []
 }
 
 func (s *session) runOpen(runCtx context.Context) {
-	// Reuse bounded collectors: an arrival needs samples, not a fresh histogram.
-	collectors := make([]local, min(runtime.GOMAXPROCS(0), 32))
-	for i := range collectors {
-		collectors[i].samples = map[string]*hist{}
-	}
 	var wg sync.WaitGroup
 	for n := 0; ; n++ {
 		off, ok := s.plan.due(n)
@@ -285,14 +287,11 @@ func (s *session) runOpen(runCtx context.Context) {
 			} else {
 				defer s.inflight.Add(-1)
 			}
-			lu := &collectors[(id-1)%len(collectors)]
+			lu := &s.collectors[(id-1)%len(s.collectors)]
 			s.once(runCtx, runCtx, lu, due, id, 1)
 		})
 	}
 	wg.Wait()
-	for i := range collectors {
-		s.fold(&collectors[i])
-	}
 }
 
 func (s *session) reserve() bool {
@@ -331,7 +330,7 @@ func (s *session) noteLag(lag time.Duration) {
 	}
 }
 
-func (s *session) once(runCtx, userCtx context.Context, lu *local, due time.Time, id, iter int) bool {
+func (s *session) once(runCtx, userCtx context.Context, lu *collector, due time.Time, id, iter int) bool {
 	if runCtx.Err() != nil || userCtx.Err() != nil || !time.Now().Before(s.end) {
 		return false
 	}
@@ -354,7 +353,7 @@ func (s *session) once(runCtx, userCtx context.Context, lu *local, due time.Time
 				return
 			}
 			s.requests.Add(1)
-			lu.add(ex)
+			s.record(ex)
 			if !due.IsZero() {
 				lu.addSched(now.Sub(due))
 			}
@@ -372,7 +371,12 @@ func (s *session) once(runCtx, userCtx context.Context, lu *local, due time.Time
 			return false
 		}
 		s.errMu.Lock()
-		s.runErrs = append(s.runErrs, err)
+		if s.runErr == nil {
+			s.runErr = err
+			if s.stop != nil {
+				s.stop()
+			}
+		}
 		s.errMu.Unlock()
 		return false
 	}
@@ -438,7 +442,11 @@ func (s *session) finish(ctx context.Context) (Result, error) {
 	if elapsed < 0 {
 		elapsed = time.Since(s.started)
 	}
-	merged := merge([]*local{&s.acc}, elapsed)
+	collectors := make([]*collector, len(s.collectors))
+	for i := range s.collectors {
+		collectors[i] = &s.collectors[i]
+	}
+	merged := merge(collectors, elapsed)
 	merged.Started = s.started
 	merged.Elapsed = elapsed
 	merged.Profile = Describe(s.cfg)
@@ -454,6 +462,8 @@ func (s *session) finish(ctx context.Context) (Result, error) {
 	merged.MissedStarts = s.missed.Load()
 	merged.LateStarts = s.late.Load()
 	merged.MaxStartLag = time.Duration(s.maxLag.Load())
+	merged.EndpointLimit = s.cfg.MaxEndpoints
+	merged.EndpointOverflow = s.endpoints.overflow.Load()
 	merged.CPU = s.cpu
 	merged.RSS = s.rss
 	merged.Goroutines = s.goroutines
@@ -473,7 +483,7 @@ func (s *session) finish(ctx context.Context) (Result, error) {
 		return merged, err
 	}
 	s.errMu.Lock()
-	err := errors.Join(s.runErrs...)
+	err := s.runErr
 	s.errMu.Unlock()
 	if err != nil {
 		merged.Passed = false
@@ -482,7 +492,7 @@ func (s *session) finish(ctx context.Context) (Result, error) {
 	return merged, nil
 }
 
-type local struct {
+type collector struct {
 	mu        sync.Mutex
 	samples   map[string]*hist
 	errors    map[string]int64
@@ -494,7 +504,7 @@ type local struct {
 	failures  []engine.ScenarioResult
 }
 
-func (l *local) recordIteration(failed bool) {
+func (l *collector) recordIteration(failed bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.iters++
@@ -503,7 +513,7 @@ func (l *local) recordIteration(failed bool) {
 	}
 }
 
-func (l *local) add(ex engine.Exchange) {
+func (l *collector) add(ex engine.Exchange) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	ns := ex.Duration.Nanoseconds()
@@ -523,7 +533,7 @@ func (l *local) add(ex engine.Exchange) {
 	}
 }
 
-func (l *local) addSched(d time.Duration) {
+func (l *collector) addSched(d time.Duration) {
 	if d < 0 {
 		d = 0
 	}
@@ -532,43 +542,7 @@ func (l *local) addSched(d time.Duration) {
 	l.mu.Unlock()
 }
 
-func (s *session) fold(lu *local) {
-	s.accMu.Lock()
-	s.acc.absorb(lu)
-	s.accMu.Unlock()
-}
-
-func (dst *local) absorb(src *local) {
-	dst.iters += src.iters
-	dst.transport += src.transport
-	dst.all.merge(src.all)
-	dst.sched.merge(src.sched)
-	if len(src.samples) > 0 && dst.samples == nil {
-		dst.samples = map[string]*hist{}
-	}
-	for name, h := range src.samples {
-		acc := dst.samples[name]
-		if acc == nil {
-			acc = &hist{}
-			dst.samples[name] = acc
-		}
-		acc.merge(*h)
-	}
-	for name, n := range src.errors {
-		if dst.errors == nil {
-			dst.errors = map[string]int64{}
-		}
-		dst.errors[name] += n
-	}
-	for _, sc := range src.failures {
-		if len(dst.failures) >= 20 {
-			return
-		}
-		dst.failures = append(dst.failures, sc)
-	}
-}
-
-func (l *local) keep(res engine.FileResult) {
+func (l *collector) keep(res engine.FileResult) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if len(l.failures) >= 8 {
@@ -585,8 +559,8 @@ func (l *local) keep(res engine.FileResult) {
 	}
 }
 
-func merge(locals []*local, elapsed time.Duration) Result {
-	by := map[string]hist{}
+func merge(locals []*collector, elapsed time.Duration) Result {
+	by := map[string]*hist{}
 	errN := map[string]int64{}
 	var all hist
 	var sched hist
@@ -602,8 +576,11 @@ func merge(locals []*local, elapsed time.Duration) Result {
 		sched.merge(l.sched)
 		for k, s := range l.samples {
 			h := by[k]
+			if h == nil {
+				h = &hist{}
+				by[k] = h
+			}
 			h.merge(*s)
-			by[k] = h
 		}
 		for k, n := range l.errors {
 			errN[k] += n

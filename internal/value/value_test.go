@@ -45,3 +45,43 @@ func TestNormalizeOwnsBytes(t *testing.T) {
 		t.Fatal("normalization retained mutable input")
 	}
 }
+
+func TestClonePreservesCanonicalNumbers(t *testing.T) {
+	for _, v := range []any{int(2), uint64(math.MaxUint64), float32(1.5), float64(2), math.NaN(), math.Inf(1)} {
+		encoded, encodeErr := Marshal(v)
+		got, err := Clone(v)
+		if encodeErr != nil {
+			if err == nil {
+				t.Errorf("Clone(%v) accepted an invalid JSON number", v)
+			}
+			continue
+		}
+		want, parseErr := Parse(encoded)
+		if parseErr != nil {
+			t.Fatal(parseErr)
+		}
+		if got != want {
+			t.Errorf("Clone(%T(%v)) = %T(%v), want %T(%v)", v, v, got, got, want, want)
+		}
+	}
+}
+
+func TestCompareNumbersPreservesPrecisionAndNonfinitePolicy(t *testing.T) {
+	for _, test := range []struct {
+		a, b  any
+		order int
+		ok    bool
+	}{
+		{int64(9007199254740993), float64(9007199254740992), 1, true},
+		{float64(9007199254740992), int64(9007199254740993), -1, true},
+		{int64(math.MaxInt64), int64(math.MinInt64), 1, true},
+		{1.5, 1.25, 1, true}, {math.Copysign(0, -1), float64(0), 0, true},
+		{math.NaN(), float64(1), 0, false}, {math.Inf(1), math.Inf(1), 0, false},
+		{"1", int64(1), 0, false},
+	} {
+		order, ok := CompareNumbers(test.a, test.b)
+		if order != test.order || ok != test.ok {
+			t.Errorf("CompareNumbers(%v,%v) = %d,%v", test.a, test.b, order, ok)
+		}
+	}
+}

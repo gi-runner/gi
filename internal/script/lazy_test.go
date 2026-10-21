@@ -50,3 +50,50 @@ func TestDeferredAPIRebindAndMutation(t *testing.T) {
 		t.Fatalf("leaked mutation: %v %v", got, err)
 	}
 }
+
+func TestDeferredDriverAliasesAndOverrides(t *testing.T) {
+	for _, expr := range []string{
+		`driver.click === click && Object.keys(driver).includes('quit')`,
+		`var original = click; click = 7; driver.click === original && click === 7`,
+		`driver = {custom:true}; driver.custom && typeof click === 'function'`,
+		`delete driver; typeof driver === 'undefined' && typeof click === 'function'`,
+		`driver.extra = 7; driver.extra === 7`,
+	} {
+		t.Run(expr, func(t *testing.T) {
+			v := New()
+			if err := v.Bind(Bindings{}); err != nil {
+				t.Fatal(err)
+			}
+			got, err := v.Eval(expr)
+			if err != nil || got != true {
+				t.Fatalf("%v: %v", got, err)
+			}
+		})
+	}
+}
+
+func TestDeferredDriverUsesCurrentBindings(t *testing.T) {
+	v := New()
+	binding := func(label string) Bindings {
+		return Bindings{Driver: func(string, []any) (any, error) { return label, nil }}
+	}
+	if err := v.Bind(binding("first")); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.Bind(binding("second")); err != nil {
+		t.Fatal(err)
+	}
+	for _, expr := range []string{`driver.text('#a')`, `text('#a')`} {
+		got, err := v.Eval(expr)
+		if err != nil || got != "second" {
+			t.Fatalf("%s = %v: %v", expr, got, err)
+		}
+	}
+	if err := v.Bind(binding("third")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := v.Eval(`driver.text('#a')`)
+	if err != nil || got != "third" {
+		t.Fatalf("rebound driver: %v %v", got, err)
+	}
+}

@@ -38,6 +38,7 @@ Flags may follow the file path. `gi test users.feature --var baseUrl=http://127.
 | `--rate-to n` | Ramp the start rate from `--rate` to n. |
 | `--stage spec` | Repeatable segment, such as `users=1:40 duration=30s` or `spike rate=500 duration=10s`. |
 | `--max-inflight n` | Open-loop cap. A start past the cap is a missed start. |
+| `--max-endpoints n` | Named endpoint limit (default 1,000). Further paths aggregate under `[other endpoints]`. |
 | `--duration 10s` | Measured window. Stages carry their own durations. |
 | `--warmup 0s` | Unmeasured time before the window. |
 | `--rps n` | Cap on HTTP calls. `0` means no cap. |

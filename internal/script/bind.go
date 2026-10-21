@@ -206,6 +206,10 @@ func (v *VM) initializeAPI() (err error) {
 }
 
 func (v *VM) EvalConfig(src string) error {
+	return v.Try(func() error { return v.evalConfig(src) })
+}
+
+func (v *VM) evalConfig(src string) error {
 	src = strings.TrimSpace(src)
 	if src == "" {
 		return nil
@@ -317,13 +321,7 @@ func (v *VM) Bridge(methods map[string]func([]any) (any, error)) sobek.Value {
 	_ = obj.Set("__gi", true)
 	for name, fn := range methods {
 		_ = obj.Set(name, func(call sobek.FunctionCall) sobek.Value {
-			args := make([]any, len(call.Arguments))
-			for i, a := range call.Arguments {
-				if sobek.IsUndefined(a) || sobek.IsNull(a) {
-					continue
-				}
-				args[i] = value.Normalize(a.Export())
-			}
+			args := exportArgs(call.Arguments, nil)
 			got, err := fn(args)
 			if err != nil {
 				panic(v.rt.NewGoError(err))
@@ -546,4 +544,15 @@ func (v *VM) embeds(x any) (any, error) {
 	default:
 		return x, nil
 	}
+}
+
+func exportArgs(args []sobek.Value, prefix []any) []any {
+	out := make([]any, len(prefix)+len(args))
+	copy(out, prefix)
+	for i, arg := range args {
+		if !missing(arg) {
+			out[len(prefix)+i] = value.Normalize(arg.Export())
+		}
+	}
+	return out
 }

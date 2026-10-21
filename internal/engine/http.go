@@ -5,13 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/gi-runner/gi/internal/value"
-	"github.com/gi-runner/gi/internal/xml"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/gi-runner/gi/internal/value"
+	"github.com/gi-runner/gi/internal/xml"
 )
 
 var uuidPath = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
@@ -171,21 +172,11 @@ func (e *exec) method(ctx context.Context, name string, sr *StepResult) error {
 		if e.opt.OnRequest != nil {
 			e.opt.OnRequest(*exch)
 		}
-		parsed := parseBody(headerValue(reply.Header, "Content-Type"), reply.Body)
-		if e.sess.strictParsing && strings.Contains(strings.ToLower(headerValue(reply.Header, "Content-Type")), "json") {
-			var err error
-			parsed, err = value.Parse(reply.Body)
-			if err != nil {
-				return fmt.Errorf("invalid JSON response: %w", err)
-			}
+		parsed, err := responseBody(headerValue(reply.Header, "Content-Type"), reply.Body, e.sess.strictParsing)
+		if err != nil {
+			return err
 		}
-		if e.sess.strictParsing && strings.Contains(strings.ToLower(headerValue(reply.Header, "Content-Type")), "xml") {
-			var err error
-			parsed, err = xml.ParseDocument(string(reply.Body))
-			if err != nil {
-				return fmt.Errorf("invalid XML response: %w", err)
-			}
-		}
+
 		e.vm.Set("response", parsed)
 		e.vm.Set("responseStatus", int64(reply.Status))
 		e.vm.Set("responseTime", reply.Duration.Milliseconds())
@@ -198,7 +189,7 @@ func (e *exec) method(ctx context.Context, name string, sr *StepResult) error {
 			e.sess.jar.SetCookies(u, resp.Cookies())
 			e.vm.Set("responseCookies", responseCookies(resp.Cookies()))
 		}
-		e.vm.Set("responseBytes", append([]byte(nil), reply.Body...))
+		e.vm.Set("responseBytes", reply.Body)
 		e.vm.Set("responseHeaders", headerAny(reply.Header))
 		if until == "" {
 			return nil
@@ -251,6 +242,25 @@ func buildURL(base string, paths []string, params url.Values) (string, error) {
 	return u.String(), nil
 }
 
+func responseBody(contentType string, raw []byte, strict bool) (any, error) {
+	ct := strings.ToLower(contentType)
+	if strict && strings.Contains(ct, "json") {
+		parsed, err := value.Parse(raw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid JSON response: %w", err)
+		}
+		return parsed, nil
+	}
+	if strict && strings.Contains(ct, "xml") {
+		parsed, err := xml.ParseDocument(string(raw))
+		if err != nil {
+			return nil, fmt.Errorf("invalid XML response: %w", err)
+		}
+		return parsed, nil
+	}
+	return parseBody(contentType, raw), nil
+}
+
 func parseBody(contentType string, raw []byte) any {
 	trim := bytes.TrimSpace(raw)
 	if len(trim) == 0 {
@@ -272,11 +282,7 @@ func parseBody(contentType string, raw []byte) any {
 }
 
 func cloneHeader(h map[string][]string) map[string][]string {
-	out := make(map[string][]string, len(h))
-	for k, vs := range h {
-		out[k] = append([]string(nil), vs...)
-	}
-	return out
+	return http.Header(h).Clone()
 }
 
 func headerSet(h map[string][]string, key, val string) map[string][]string {

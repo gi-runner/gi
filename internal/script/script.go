@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -268,7 +269,26 @@ func removeSegs(cur any, segs []seg) (any, error) {
 	return nil, errors.New("remove path is not valid")
 }
 
-func (v *VM) Eval(expr string) (any, error) {
+// Try converts JavaScript exceptions from property access and export into errors.
+// The caller must own the runtime, just as for Eval and Get.
+func (v *VM) Try(fn func() error) error {
+	var err error
+	if exception := v.rt.Try(func() { err = fn() }); exception != nil {
+		return exception
+	}
+	return err
+}
+
+func (v *VM) Eval(expr string) (out any, err error) {
+	err = v.Try(func() error {
+		out, err = v.eval(expr)
+		return err
+	})
+	return out, err
+}
+
+func (v *VM) eval(expr string) (any, error) {
+
 	expr = strings.TrimSpace(expr)
 	if expr == "" {
 		return nil, errors.New("empty expression")
@@ -403,23 +423,24 @@ func (v *VM) exportObject(rv sobek.Value, seen map[*sobek.Object]any) any {
 	if previous, ok := seen[obj]; ok {
 		return previous
 	}
-	switch raw := obj.Export().(type) {
-	case map[string]any:
-		out := make(map[string]any, len(raw))
+	switch obj.ExportType() {
+	case reflect.TypeFor[map[string]any]():
+		keys := obj.Keys()
+		out := make(map[string]any, len(keys))
 		seen[obj] = out
-		for key := range raw {
+		for _, key := range keys {
 			out[key] = v.exportObject(obj.Get(key), seen)
 		}
 		return out
-	case []any:
-		out := make([]any, len(raw))
+	case reflect.TypeFor[[]any]():
+		out := make([]any, int(obj.Get("length").ToInteger()))
 		seen[obj] = out
 		for i := range out {
 			out[i] = v.exportObject(obj.Get(strconv.Itoa(i)), seen)
 		}
 		return out
 	default:
-		return value.Normalize(raw)
+		return value.Normalize(obj.Export())
 	}
 }
 
@@ -843,7 +864,7 @@ func (v *VM) Invoke(expr string, arg any) (any, error) {
 }
 
 // CallFile evaluates a JS helper once, invoking it if it returns a function.
-// An object-valued helper is returned as data, as in Karate.
+// An object-valued helper is returned as data.
 func (v *VM) CallFile(ref string, arg any) (any, error) {
 	val, err := v.read(ref)
 	if err != nil {

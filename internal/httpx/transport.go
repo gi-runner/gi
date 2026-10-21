@@ -37,7 +37,6 @@ func (c *client) transport(settings engine.TransportSettings) (http.RoundTripper
 		if err != nil {
 			return nil, fmt.Errorf("HTTP %w", err)
 		}
-		// Karate's explicit ssl=true option trusts test endpoint certificates.
 		conf.InsecureSkipVerify = settings.TrustAll
 		if settings.TLSVersion != 0 {
 			conf.MinVersion = settings.TLSVersion

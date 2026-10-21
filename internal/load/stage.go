@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/bits"
 	"strconv"
 	"strings"
 	"time"
@@ -88,6 +89,12 @@ func validateStage(st Stage) error {
 	}
 	if st.Spike && st.ToSet {
 		return errors.New("a spike is a single level")
+	}
+	if !st.Rate {
+		limit := math.Ldexp(1, strconv.IntSize-1)
+		if st.From >= limit || (st.ToSet && st.To >= limit) {
+			return errors.New("stage users exceed the integer range")
+		}
 	}
 	if !st.Rate && (st.From != math.Trunc(st.From) || (st.ToSet && st.To != math.Trunc(st.To))) {
 		return errors.New("stage users must be whole numbers")
@@ -183,7 +190,9 @@ func (p plan) levels() []level {
 				steps = -steps
 			}
 			for k := 1; k <= steps; k++ {
-				at := t + time.Duration(int64(st.Duration)*int64(k)/int64(steps))
+				hi, lo := bits.Mul64(uint64(st.Duration), uint64(k)) //nolint:gosec // Validated positive duration and 1 <= k <= steps.
+				offset, _ := bits.Div64(hi, lo, uint64(steps))       //nolint:gosec // A ramp has a positive step count.
+				at := t + time.Duration(offset)                      //nolint:gosec // The quotient is bounded by st.Duration.
 				out = append(out, level{At: at, N: from + dir*k})
 			}
 			levelN = to
@@ -195,9 +204,10 @@ func (p plan) levels() []level {
 
 func (p plan) maxUsers() int {
 	m := 1
-	for _, lv := range p.levels() {
-		if lv.N > m {
-			m = lv.N
+	for _, st := range p.stages {
+		m = max(m, int(st.From))
+		if st.ToSet {
+			m = max(m, int(st.To))
 		}
 	}
 	return m
@@ -239,7 +249,8 @@ func (s span) invert(n float64) (time.Duration, bool) {
 		return 0, false
 	}
 	sqrt := math.Sqrt(disc)
-	t := (-b + sqrt) / (2 * a)
+	// Rationalizing the positive root avoids cancellation for nearly flat ramps.
+	t := 2 * n / (b + sqrt)
 	if t < 0 || t > T {
 		t = (-b - sqrt) / (2 * a)
 	}

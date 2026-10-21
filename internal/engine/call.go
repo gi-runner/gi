@@ -162,7 +162,7 @@ func (r callResult) CloneCache() (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	state := sessionFrom(Options{inherited: &r.state})
+	state := persistentSession(r.state)
 	state.jar = nil // A cache must never share a scenario's cookie jar.
 	shared, err := value.Clone(r.sharedVars)
 	if err != nil {
@@ -287,7 +287,7 @@ func (e *exec) callFeature(ctx context.Context, path string, arg any, stack []st
 	opt := e.callOptions(stack)
 	opt.vm = vm
 	initial := e.vm.Vars()
-	vars := e.vm.Vars()
+	vars := maps.Clone(initial)
 	if vars == nil {
 		vars = map[string]any{}
 	}

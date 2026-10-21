@@ -216,6 +216,8 @@ type loadView struct {
 	FailedIterations int64    `json:"failedIterations"`
 	Requests         int64    `json:"requests"`
 	TransportErrors  int64    `json:"transportErrors"`
+	EndpointLimit    int      `json:"endpointLimit"`
+	EndpointOverflow int64    `json:"endpointOverflow,omitempty"`
 	ElapsedMS        float64  `json:"elapsedMs"`
 	RPS              float64  `json:"rps"`
 	Passed           bool     `json:"passed"`
@@ -433,6 +435,8 @@ func loadViewOf(ld load.Result) loadView {
 		FailedIterations: ld.FailedIterations,
 		Requests:         ld.Requests,
 		TransportErrors:  ld.TransportErrors,
+		EndpointLimit:    ld.EndpointLimit,
+		EndpointOverflow: ld.EndpointOverflow,
 		ElapsedMS:        ms(ld.Elapsed),
 		RPS:              float64(ld.Requests) / sec,
 		Passed:           ld.Passed,
@@ -552,6 +556,7 @@ const htmlPage = `<!DOCTYPE html>
   {{end}}
   {{if .Endpoints}}
   <h2>Endpoints</h2>
+  {{if .EndpointOverflow}}<p>{{.EndpointOverflow}} requests aggregated into <code>[other endpoints]</code> after the limit of {{.EndpointLimit}} named endpoints.</p>{{end}}
   <table>
     <tr><th>endpoint</th><th>count</th><th>req/s</th><th>p50</th><th>p95</th><th>p99</th><th>errors</th></tr>
     {{range .Endpoints}}<tr><td><code>{{.Name}}</code></td><td>{{.Count}}</td><td>{{fmtrps .RPS}}</td><td>{{.P50}}</td><td>{{.P95}}</td><td>{{.P99}}</td><td>{{.Errors}}</td></tr>{{end}}

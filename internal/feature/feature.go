@@ -27,19 +27,20 @@ type File struct {
 }
 
 type LoadSpec struct {
-	VUs         int
-	VUsTo       int
-	UsersToSet  bool
-	Rate        float64
-	RateSet     bool
-	RateTo      float64
-	RateToSet   bool
-	StageText   []string
-	MaxInFlight int
-	Duration    time.Duration
-	RPS         int
-	Warmup      time.Duration
-	Thresholds  []string
+	VUs          int
+	VUsTo        int
+	UsersToSet   bool
+	Rate         float64
+	RateSet      bool
+	RateTo       float64
+	RateToSet    bool
+	StageText    []string
+	MaxInFlight  int
+	MaxEndpoints int
+	Duration     time.Duration
+	RPS          int
+	Warmup       time.Duration
+	Thresholds   []string
 }
 
 type Scenario struct {
@@ -149,7 +150,9 @@ func Parse(path, source string) (*File, error) {
 		Tags:        tagNames(doc.Feature.Tags),
 	}
 	for _, c := range doc.Comments {
-		applyLoadComment(&f.Load, c.Text)
+		if err := applyLoadComment(&f.Load, c.Text); err != nil {
+			return nil, fmt.Errorf("%s:%d: %w", path, c.Location.Line, err)
+		}
 	}
 	if err := f.Load.validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
@@ -456,75 +459,75 @@ func commentLabels(comments []*messages.Comment) map[int64]string {
 	return out
 }
 
-func applyLoadComment(spec *LoadSpec, raw string) {
-	text := strings.TrimSpace(raw)
-	text = strings.TrimPrefix(text, "#")
-	text = strings.TrimSpace(text)
+func applyLoadComment(spec *LoadSpec, raw string) error {
+	text := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(raw), "#"))
 	rest, ok := strings.CutPrefix(text, "gi-load:")
 	if !ok {
-		return
+		return nil
 	}
-	rest = strings.TrimSpace(rest)
-	if after, ok0 := strings.CutPrefix(rest, "stage"); ok0 {
-		if st := strings.TrimSpace(after); st != "" {
-			spec.StageText = append(spec.StageText, st)
+	fields := strings.Fields(rest)
+	if len(fields) == 0 {
+		return errors.New("gi-load requires settings")
+	}
+	switch fields[0] {
+	case "stage", "threshold":
+		body := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(rest), fields[0]))
+		if body == "" {
+			return fmt.Errorf("gi-load %s requires a value", fields[0])
 		}
-		return
-	}
-	if after, ok0 := strings.CutPrefix(rest, "threshold"); ok0 {
-		th := strings.TrimSpace(after)
-		if th != "" {
-			spec.Thresholds = append(spec.Thresholds, th)
+		if fields[0] == "stage" {
+			spec.StageText = append(spec.StageText, body)
+		} else {
+			spec.Thresholds = append(spec.Thresholds, body)
 		}
-		return
+		return nil
 	}
-	for field := range strings.FieldsSeq(rest) {
-		k, v, ok := strings.Cut(field, "=")
+	for _, field := range fields {
+		key, raw, ok := strings.Cut(field, "=")
 		if !ok {
-			continue
+			return fmt.Errorf("gi-load setting %q requires name=value", field)
 		}
-		switch strings.ToLower(k) {
+		var err error
+		switch strings.ToLower(key) {
 		case "vus", "vu":
-			if n, err := strconv.Atoi(v); err == nil {
-				spec.VUs = n
-			}
+			spec.VUs, err = strconv.Atoi(raw)
 		case "vusto":
-			if n, err := strconv.Atoi(v); err == nil {
-				spec.VUsTo = n
-				spec.UsersToSet = true
-			}
+			spec.VUsTo, err = strconv.Atoi(raw)
+			spec.UsersToSet = true
 		case "duration":
-			if d, err := time.ParseDuration(v); err == nil {
-				spec.Duration = d
+			spec.Duration, err = time.ParseDuration(raw)
+			if err == nil && spec.Duration <= 0 {
+				err = errors.New("duration must be positive")
 			}
 		case "rps":
-			if n, err := strconv.Atoi(v); err == nil {
-				spec.RPS = n
-			}
+			spec.RPS, err = strconv.Atoi(raw)
 		case "rate":
-			if n, err := strconv.ParseFloat(v, 64); err == nil {
-				spec.Rate = n
-				spec.RateSet = true
-			}
+			spec.Rate, err = strconv.ParseFloat(raw, 64)
+			spec.RateSet = true
 		case "rateto":
-			if n, err := strconv.ParseFloat(v, 64); err == nil {
-				spec.RateTo = n
-				spec.RateToSet = true
-			}
+			spec.RateTo, err = strconv.ParseFloat(raw, 64)
+			spec.RateToSet = true
 		case "warmup":
-			if d, err := time.ParseDuration(v); err == nil {
-				spec.Warmup = d
+			spec.Warmup, err = time.ParseDuration(raw)
+		case "maxendpoints":
+			spec.MaxEndpoints, err = strconv.Atoi(raw)
+			if err == nil && spec.MaxEndpoints <= 0 {
+				err = errors.New("maxEndpoints must be positive")
 			}
 		case "maxinflight":
-			if n, err := strconv.Atoi(v); err == nil {
-				spec.MaxInFlight = n
-			}
+			spec.MaxInFlight, err = strconv.Atoi(raw)
+		default:
+			return fmt.Errorf("unknown gi-load setting %q", key)
+		}
+		if err != nil {
+			return fmt.Errorf("gi-load %s: %w", key, err)
 		}
 	}
+	return nil
 }
 
 func (spec LoadSpec) validate() error {
-	if spec.VUs < 0 || spec.VUsTo < 0 || spec.RPS < 0 || spec.Rate < 0 || spec.RateTo < 0 ||
+	if spec.Warmup < 0 || spec.VUs < 0 || spec.VUsTo < 0 || spec.RPS < 0 || spec.Rate < 0 || spec.RateTo < 0 ||
 		math.IsNaN(spec.Rate) || math.IsInf(spec.Rate, 0) || math.IsNaN(spec.RateTo) || math.IsInf(spec.RateTo, 0) {
 		return errors.New("gi-load values must be finite and nonnegative")
 	}

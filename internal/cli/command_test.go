@@ -3,6 +3,8 @@ package cli
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -82,4 +84,38 @@ func runCLI(t *testing.T, args ...string) (int, string) {
 		t.Fatal(err)
 	}
 	return exit.ExitCode(), string(out)
+}
+
+func TestLoadEndpointLimitFromCLIToReports(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+	defer server.Close()
+	dir := t.TempDir()
+	featurePath := filepath.Join(dir, "endpoints.feature")
+	source := `Feature: endpoint limits
+Scenario: unique path
+* url baseUrl
+* path 'item-' + vu
+* method get
+* status 200
+`
+	if err := os.WriteFile(featurePath, []byte(source), 0600); err != nil {
+		t.Fatal(err)
+	}
+	jsonPath, htmlPath := filepath.Join(dir, "load.json"), filepath.Join(dir, "load.html")
+	code, out := runCLI(t, "load", featurePath, "--rate", "50", "--duration", "200ms", "--max-endpoints", "1", "--var", "baseUrl="+server.URL, "--json", jsonPath, "--report", htmlPath)
+	if code != 0 {
+		t.Fatalf("load exited %d: %s", code, out)
+	}
+	if !strings.Contains(out, "requests aggregated into [other endpoints]") {
+		t.Fatalf("CLI hid endpoint aggregation: %s", out)
+	}
+	for _, path := range []string{jsonPath, htmlPath} {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(raw), "[other endpoints]") {
+			t.Fatalf("report omitted overflow endpoint: %s", path)
+		}
+	}
 }

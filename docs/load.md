@@ -59,6 +59,8 @@ Login once in `@setup`, then read it with `gi.setupOnce()`. A login inside the s
 
 Each HTTP call is stored under a path template. UUIDs and numeric segments collapse to `{id}`, so `GET /users/550e8400-e29b-41d4-a716-446655440000` becomes `GET /users/{id}`.
 
+By default, a run keeps 1,000 named endpoints. Set `--max-endpoints 2000` or `# gi-load: maxEndpoints=2000` to change the limit. Further paths aggregate under `[other endpoints]`; counts, errors, and overall latency still include every request. The CLI, HTML, and JSON reports show how many requests were aggregated. Histograms are shared across users, so increasing virtual users does not duplicate endpoint histograms.
+
 The summary reports count, throughput, min, mean, p50, p95, and p99. Percentiles come from a fixed histogram with 32 buckets per power of two, so a long run stays bounded. The bucket upper bound is at most 3.125% above the nearest-rank value (exact below 32 ns). A percentile is the upper edge of its bucket, capped by the slowest sample, which makes a latency threshold fail closed. An in-flight operation cancelled at the window boundary does not create a failed iteration. An assertion failure completed earlier in that same iteration remains a failure.
 
 | Threshold | Compares |

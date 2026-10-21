@@ -57,7 +57,7 @@ func Dial(ctx context.Context, spec map[string]any) (engine.Link, error) {
 		kgo.ConsumeResetOffset(offset),
 	}
 	if group != "" {
-		opts = append(opts, kgo.ConsumerGroup(group))
+		opts = append(opts, kgo.ConsumerGroup(group), kgo.DisableAutoCommit())
 	}
 	if mech != nil {
 		opts = append(opts, kgo.SASL(mech))
@@ -96,6 +96,7 @@ func (l *link) Receive(ctx context.Context) (any, error) {
 	if err := l.ack(ctx, item.raw); err != nil {
 		return nil, err
 	}
+	l.pending[0] = record{}
 	l.pending = l.pending[1:]
 	return item.value, nil
 }

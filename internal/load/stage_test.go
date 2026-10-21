@@ -101,3 +101,27 @@ func TestStageLevelsAndDurationsAreCheckedOnce(t *testing.T) {
 		t.Fatal("accepted a duration that overflows")
 	}
 }
+
+func TestLongUserRampDoesNotOverflow(t *testing.T) {
+	const duration = 100 * 24 * time.Hour
+	p := newPlan(0, []Stage{{From: 1, To: 2000, ToSet: true, Duration: duration}})
+	levels := p.levels()
+	if len(levels) != 2000 || levels[len(levels)-1].At != duration {
+		t.Fatalf("ramp ended at %+v", levels[len(levels)-1])
+	}
+	for i := 1; i < len(levels); i++ {
+		if levels[i].At <= levels[i-1].At {
+			t.Fatalf("ramp moved backward at %d: %+v", i, levels[i])
+		}
+	}
+}
+
+func TestNearlyFlatRateRampStillAdvances(t *testing.T) {
+	for _, to := range []float64{1e9 + 1, 1e9 - 1} {
+		s := span{from: 1e9, to: to, dur: time.Hour}
+		due, ok := s.invert(1000)
+		if !ok || due < 999*time.Nanosecond || due > 1001*time.Nanosecond {
+			t.Fatalf("rate %g: arrival 1000 due at %s (%v)", to, due, ok)
+		}
+	}
+}

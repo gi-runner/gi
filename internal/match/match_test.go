@@ -167,3 +167,26 @@ func TestValidatorErrorsAreDistinctFromMismatches(t *testing.T) {
 		t.Fatalf("each dropped error: %+v", result)
 	}
 }
+
+func TestMatchEachKeepsPredicateRootAndNegation(t *testing.T) {
+	values := []any{int64(1), int64(2), int64(3)}
+	mustPass(t, match.MatchEach(values, "#? _ <= $.length", match.Equals, ctx(nil)))
+	mustPass(t, match.MatchEach(values, "#? _ <= $.limit", match.Equals, func() match.Context { c := ctx(nil); c.Root = map[string]any{"limit": 3}; return c }()))
+	mustPass(t, match.MatchEach(values, int64(4), match.NotEquals, ctx(nil)))
+	mustFail(t, match.MatchEach(values, int64(2), match.NotEquals, ctx(nil)))
+}
+
+func TestUnorderedLiteralCountsAndPrecision(t *testing.T) {
+	mustPass(t, match.Match([]any{int64(1), int64(1), 2.0}, []any{int64(2), 1.0, int64(1)}, match.ContainsOnly, ctx(nil)))
+	mustFail(t, match.Match([]any{int64(1), int64(2), int64(2)}, []any{int64(1), int64(1), int64(2)}, match.ContainsOnly, ctx(nil)))
+	mustFail(t, match.Match([]any{int64(9007199254740993)}, []any{float64(9007199254740992)}, match.ContainsOnly, ctx(nil)))
+	mustPass(t, match.Match([]any{nil, true, "plain", 1.25}, []any{1.25, "plain", true, nil}, match.ContainsOnly, ctx(nil)))
+}
+
+type arrayModel struct{ items []any }
+
+func (m arrayModel) DataValue() any { return m.items }
+
+func TestUnorderedDataModelNormalizesNumericKeys(t *testing.T) {
+	mustPass(t, match.Match(arrayModel{items: []any{float64(2)}}, []any{int64(2)}, match.ContainsOnly, ctx(nil)))
+}

@@ -4,6 +4,7 @@ package value
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"encoding/json/jsontext"
 	jsonv2 "encoding/json/v2"
@@ -36,9 +37,7 @@ func Normalize(v any) any {
 		return Normalize(t.Export())
 	case interface{ NativeValue() any }:
 		return Normalize(t.NativeValue())
-	case nil, Absent:
-		return t
-	case bool, string:
+	case nil, Absent, bool, string, int64:
 		return t
 	case int:
 		return int64(t)
@@ -48,8 +47,6 @@ func Normalize(v any) any {
 		return int64(t)
 	case int32:
 		return int64(t)
-	case int64:
-		return t
 	case uint:
 		return uintToNumber(uint64(t))
 	case uint8:
@@ -188,15 +185,24 @@ func AsSlice(v any) ([]any, bool) {
 }
 
 func NumbersEqual(a, b any) (equal, ok bool) {
-	ar, aok := rat(a)
-	br, bok := rat(b)
-	if !aok || !bok {
-		return false, false
-	}
-	return ar.Cmp(br) == 0, true
+	order, ok := CompareNumbers(a, b)
+	return order == 0 && ok, ok
 }
 
 func CompareNumbers(a, b any) (int, bool) {
+	switch x := a.(type) {
+	case int64:
+		if y, ok := b.(int64); ok {
+			return cmp.Compare(x, y), true
+		}
+	case float64:
+		if y, ok := b.(float64); ok {
+			if math.IsNaN(x) || math.IsNaN(y) || math.IsInf(x, 0) || math.IsInf(y, 0) {
+				return 0, false
+			}
+			return cmp.Compare(x, y), true
+		}
+	}
 	ar, aok := rat(a)
 	br, bok := rat(b)
 	if !aok || !bok {
@@ -295,6 +301,8 @@ func Clone(v any) (any, error) {
 		return out, nil
 	case []byte:
 		return bytes.Clone(x), nil
+	case nil, bool, string, int64:
+		return x, nil
 	}
 	if model, ok := v.(interface{ CloneValue() (any, error) }); ok {
 		return model.CloneValue()
@@ -318,7 +326,7 @@ func Parse(b []byte) (any, error) {
 		}
 		return nil, err
 	}
-	return Normalize(v), nil
+	return v, nil
 }
 
 func readJSON(d *jsontext.Decoder) (any, error) {

@@ -261,3 +261,29 @@ Scenario: continue
 		t.Fatalf("step attachment: %#v", res.Scenarios[0].Steps)
 	}
 }
+
+func TestGetterFailureStaysInsideScenario(t *testing.T) {
+	f, err := feature.Parse("getters.feature", `Feature: getters
+Scenario: export failure
+* def item = {}
+* eval item = {get value(){throw Error('getter failed')}}
+Scenario: healthy
+* assert true
+Scenario: file hook export failure
+* def item = {}
+* configure afterFeature = function(){item = {get value(){throw Error('hook getter failed')}}}
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := engine.RunFile(t.Context(), f, engine.Options{Jobs: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Scenarios) != 3 || result.Scenarios[0].Passed || !result.Scenarios[1].Passed || result.Scenarios[2].Passed {
+		t.Fatalf("getter failures escaped their scenarios: %+v", result.Scenarios)
+	}
+	if !strings.Contains(result.Scenarios[0].Error, "getter failed") || !strings.Contains(result.Scenarios[2].Error, "hook getter failed") {
+		t.Fatalf("lost getter errors: %+v", result.Scenarios)
+	}
+}

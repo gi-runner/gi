@@ -53,18 +53,28 @@ func fileHook(ctx context.Context, e *exec, name string, res *ScenarioResult) {
 		res.Error = err.Error()
 		return
 	}
-	if sr, ok := e.hook(name); ok {
-		if !res.ReportDisabled {
-			res.Steps = append(res.Steps, sr)
-		}
-		if !sr.Passed {
-			res.Passed = false
-			if res.ReportDisabled {
-				res.Error = "scenario failed (report details suppressed)"
-			} else {
-				res.Error = sr.Error
+	if err := e.vm.Try(func() error {
+		if sr, ok := e.hook(name); ok {
+			if !res.ReportDisabled {
+				res.Steps = append(res.Steps, sr)
 			}
+			if !sr.Passed {
+				res.Passed = false
+				if res.ReportDisabled {
+					res.Error = "scenario failed (report details suppressed)"
+				} else {
+					res.Error = sr.Error
+				}
+			}
+			res.Vars = e.vm.Vars()
 		}
-		res.Vars = e.vm.Vars()
+		return nil
+	}); err != nil {
+		res.Passed = false
+		if res.ReportDisabled {
+			res.Error = "scenario failed (report details suppressed)"
+		} else {
+			res.Error = err.Error()
+		}
 	}
 }

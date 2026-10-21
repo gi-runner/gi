@@ -80,6 +80,7 @@ Load flags, in addition to --var, --tag, --timeout, and the report flags:
   --rate-to n         ramp the start rate from --rate to n
   --stage spec        repeatable segment, for example users=1:40 duration=30s
   --max-inflight n    open-loop cap; a start past the cap is a missed start
+  --max-endpoints n   named endpoint limit (default 1000); extra paths aggregate
   --duration 10s      measured window
   --warmup 0s         unmeasured time before the window
   --rps n             cap on HTTP calls, 0 means no cap
@@ -191,6 +192,7 @@ func cmdLoad(args []string) int {
 	rateTo := fs.Float64("rate-to", 0, "")
 	stages := multi{}
 	maxIn := fs.Int("max-inflight", 0, "")
+	maxEndpoints := fs.Int("max-endpoints", 0, "")
 	duration := fs.Duration("duration", 0, "")
 	warmup := fs.Duration("warmup", 0, "")
 	rps := fs.Int("rps", 0, "")
@@ -233,7 +235,7 @@ func cmdLoad(args []string) int {
 		cfg := load.Config{
 			VUs: f.Load.VUs, VUsTo: f.Load.VUsTo, UsersToSet: f.Load.UsersToSet,
 			Rate: f.Load.Rate, RateSet: f.Load.RateSet, RateTo: f.Load.RateTo, RateToSet: f.Load.RateToSet,
-			StageText: append([]string{}, f.Load.StageText...), MaxInFlight: f.Load.MaxInFlight,
+			StageText: append([]string{}, f.Load.StageText...), MaxInFlight: f.Load.MaxInFlight, MaxEndpoints: f.Load.MaxEndpoints,
 			Duration: f.Load.Duration, Warmup: f.Load.Warmup, RPS: f.Load.RPS,
 			Thresholds: append([]string{}, f.Load.Thresholds...),
 			Vars:       varmap, Tag: *tag, Timeout: *timeout, Env: *env, Suite: su,
@@ -241,7 +243,7 @@ func cmdLoad(args []string) int {
 		}
 		if err := applyLoadFlags(&cfg, loadOptions{
 			fs: fs, vus: *vus, vusTo: *vusTo, rate: *rate, rateTo: *rateTo,
-			stages: stages, maxIn: *maxIn, duration: *duration, warmup: *warmup, rps: *rps,
+			stages: stages, maxIn: *maxIn, maxEndpoints: *maxEndpoints, duration: *duration, warmup: *warmup, rps: *rps,
 		}); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 2
@@ -394,6 +396,9 @@ func printLoad(res load.Result) {
 	}
 	fmt.Printf("  requests:   %d   transport errors: %d   rps: %.1f\n", res.Requests, res.TransportErrors, float64(res.Requests)/sec)
 	fmt.Printf("  latency:    p50 %s   p95 %s   p99 %s   mean %s\n", res.Overall.P50.Round(time.Microsecond), res.Overall.P95.Round(time.Microsecond), res.Overall.P99.Round(time.Microsecond), res.Overall.Mean.Round(time.Microsecond))
+	if res.EndpointOverflow > 0 {
+		fmt.Printf("  endpoints:  %d requests aggregated into %s (limit %d)\n", res.EndpointOverflow, "[other endpoints]", res.EndpointLimit)
+	}
 	for _, ep := range res.Endpoints {
 		fmt.Printf("  %-22s  n=%-6d p95=%s\n", ep.Name, ep.Count, ep.Stats.P95.Round(time.Microsecond))
 	}
@@ -442,7 +447,7 @@ func reorderFlags(args []string) []string {
 			flags = append(flags, args[i])
 		}
 	}
-	return append(flags, files...)
+	return append(append(flags, "--"), files...)
 }
 
 func firstPath(files []string) string {
@@ -506,6 +511,7 @@ type loadOptions struct {
 	rate, rateTo     float64
 	stages           []string
 	maxIn, rps       int
+	maxEndpoints     int
 	duration, warmup time.Duration
 }
 
@@ -522,6 +528,12 @@ func applyLoadFlags(cfg *load.Config, opt loadOptions) error {
 	}
 	if (vusSet && opt.vus < 0) || (vusToSet && opt.vusTo < 0) || opt.rate < 0 || opt.rateTo < 0 || opt.rps < 0 || opt.warmup < 0 || opt.maxIn < 0 {
 		return errors.New("load profile values must be finite and nonnegative")
+	}
+	if flagGiven(opt.fs, "max-endpoints") {
+		if opt.maxEndpoints <= 0 {
+			return errors.New("max-endpoints must be positive")
+		}
+		cfg.MaxEndpoints = opt.maxEndpoints
 	}
 	if flagGiven(opt.fs, "max-inflight") {
 		cfg.MaxInFlight = opt.maxIn

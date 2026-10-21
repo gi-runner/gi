@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -117,38 +118,70 @@ func writeBytes(val any) ([]byte, error) {
 }
 
 func (e *exec) waitHTTP(raw string, timeout, every time.Duration, wake <-chan struct{}) error {
-	if every <= 0 {
-		every = 250 * time.Millisecond
+	req, err := http.NewRequestWithContext(e.ctx, http.MethodGet, raw, nil)
+	if err != nil {
+		return err
 	}
-	deadline := time.Now().Add(timeout)
-	client := &http.Client{Timeout: every}
-	var last error
-	for {
-		if err := e.ctx.Err(); err != nil {
-			return err
-		}
-		req, err := http.NewRequestWithContext(e.ctx, http.MethodGet, raw, nil)
+	client := &http.Client{Timeout: pollInterval(every)}
+	err = poll(e.ctx, timeout, every, wake, func(ctx context.Context) error {
+		resp, err := client.Do(req.WithContext(ctx))
 		if err != nil {
 			return err
 		}
-		resp, err := client.Do(req)
-		if err == nil {
-			_ = resp.Body.Close()
-			if resp.StatusCode >= 200 && resp.StatusCode < 400 {
-				return nil
-			}
-			last = fmt.Errorf("status %d", resp.StatusCode)
-		} else {
-			last = err
+		_ = resp.Body.Close()
+		if resp.StatusCode >= 200 && resp.StatusCode < 400 {
+			return nil
 		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("HTTP endpoint not available: %s: %w", raw, last)
+		return fmt.Errorf("status %d", resp.StatusCode)
+	})
+	if err != nil {
+		return fmt.Errorf("HTTP endpoint not available: %s: %w", raw, err)
+	}
+	return nil
+}
+
+func (e *exec) waitPort(host string, port int, timeout, every time.Duration, wake <-chan struct{}) error {
+	if port < 1 || port > 65535 {
+		return fmt.Errorf("port %d is not valid", port)
+	}
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
+	dialer := net.Dialer{Timeout: pollInterval(every)}
+	err := poll(e.ctx, timeout, every, wake, func(ctx context.Context) error {
+		conn, err := dialer.DialContext(ctx, "tcp", addr)
+		if err == nil {
+			_ = conn.Close()
+		}
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("port %s not available: %w", addr, err)
+	}
+	return nil
+}
+
+// One deadline bounds both checks and retry delays. The runtime can yield
+// between checks so retained callbacks do not wait for the polling interval.
+func poll(ctx context.Context, timeout, every time.Duration, wake <-chan struct{}, check func(context.Context) error) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	every = pollInterval(every)
+	var last error
+	for {
+		if err := ctx.Err(); err != nil {
+			return errors.Join(err, last)
+		}
+		last = check(ctx)
+		if err := ctx.Err(); err != nil {
+			return errors.Join(err, last)
+		}
+		if last == nil {
+			return nil
 		}
 		timer := time.NewTimer(every)
 		select {
-		case <-e.ctx.Done():
+		case <-ctx.Done():
 			timer.Stop()
-			return e.ctx.Err()
+			return errors.Join(ctx.Err(), last)
 		case <-wake:
 			timer.Stop()
 			return suite.ErrYield
@@ -157,41 +190,11 @@ func (e *exec) waitHTTP(raw string, timeout, every time.Duration, wake <-chan st
 	}
 }
 
-func (e *exec) waitPort(host string, port int, timeout, every time.Duration, wake <-chan struct{}) error {
-	if port < 1 || port > 65535 {
-		return fmt.Errorf("port %d is not valid", port)
-	}
+func pollInterval(every time.Duration) time.Duration {
 	if every <= 0 {
-		every = 250 * time.Millisecond
+		return 250 * time.Millisecond
 	}
-	addr := net.JoinHostPort(host, strconv.Itoa(port))
-	dialer := net.Dialer{Timeout: every}
-	deadline := time.Now().Add(timeout)
-	var last error
-	for {
-		if err := e.ctx.Err(); err != nil {
-			return err
-		}
-		conn, err := dialer.DialContext(e.ctx, "tcp", addr)
-		if err == nil {
-			_ = conn.Close()
-			return nil
-		}
-		last = err
-		if time.Now().After(deadline) {
-			return fmt.Errorf("port %s not available: %w", addr, last)
-		}
-		timer := time.NewTimer(every)
-		select {
-		case <-e.ctx.Done():
-			timer.Stop()
-			return e.ctx.Err()
-		case <-wake:
-			timer.Stop()
-			return suite.ErrYield
-		case <-timer.C:
-		}
-	}
+	return every
 }
 
 func (e *exec) xmlDoc(name, base string) (*xml.Document, error) {

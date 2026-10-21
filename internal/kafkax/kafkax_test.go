@@ -240,3 +240,44 @@ func TestInvalidSASLAndTLS(t *testing.T) {
 		}
 	}
 }
+
+func TestGroupCloseDoesNotCommitBufferedRecords(t *testing.T) {
+	cluster, err := kfake.NewCluster(kfake.NumBrokers(1), kfake.SeedTopics(1, "buffered"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cluster.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
+	defer cancel()
+	spec := map[string]any{"brokers": cluster.ListenAddrs()[0], "topic": "buffered", "group": "readers"}
+	producer, err := kgo.NewClient(kgo.SeedBrokers(cluster.ListenAddrs()...), kgo.DefaultProduceTopic("buffered"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producer.Close()
+	if err := producer.ProduceSync(ctx, &kgo.Record{Value: []byte("one")}, &kgo.Record{Value: []byte("two")}, &kgo.Record{Value: []byte("three")}).FirstErr(); err != nil {
+		t.Fatal(err)
+	}
+	first, err := Dial(ctx, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := first.Receive(ctx)
+	if err != nil || got != "one" {
+		t.Fatalf("first: %v %v", got, err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	second, err := Dial(ctx, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = second.Close() }()
+	for _, want := range []string{"two", "three"} {
+		got, err := second.Receive(ctx)
+		if err != nil || got != want {
+			t.Fatalf("resumed: %v %v, want %s", got, err, want)
+		}
+	}
+}

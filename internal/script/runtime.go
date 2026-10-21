@@ -176,13 +176,7 @@ func (v *VM) bindRuntime() {
 	for name, fn := range v.bindings.Helpers {
 		n, f := name, fn
 		_ = obj.Set(n, func(call sobek.FunctionCall) sobek.Value {
-			args := make([]any, len(call.Arguments))
-			for i, arg := range call.Arguments {
-				if missing(arg) {
-					continue
-				}
-				args[i] = value.Normalize(arg.Export())
-			}
+			args := exportArgs(call.Arguments, nil)
 			got, err := f(args)
 			if err != nil {
 				panic(v.rt.NewGoError(err))

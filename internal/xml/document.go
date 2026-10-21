@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/antchfx/xmlquery"
@@ -16,12 +17,43 @@ import (
 type Document struct{ root *xmlquery.Node }
 
 func ParseDocument(raw string) (*Document, error) {
-	if _, err := Parse(raw); err != nil {
-		return nil, err
-	}
-	root, err := xmlquery.Parse(strings.NewReader(raw))
+	root, err := xmlquery.ParseWithOptions(strings.NewReader(raw), xmlquery.ParserOptions{
+		Decoder: &xmlquery.DecoderOptions{
+			Strict: true,
+			CharsetReader: func(string, io.Reader) (io.Reader, error) {
+				return nil, errors.New("xml charset is not utf-8")
+			},
+		},
+	})
 	if err != nil {
 		return nil, err
+	}
+	roots := 0
+	check := func(n *xmlquery.Node) error {
+		switch n.Type {
+		case xmlquery.DocumentNode, xmlquery.DeclarationNode, xmlquery.CommentNode, xmlquery.AttributeNode, xmlquery.NotationNode, xmlquery.ProcessingInstruction:
+		case xmlquery.ElementNode:
+			roots++
+		case xmlquery.TextNode, xmlquery.CharDataNode:
+			if strings.TrimSpace(n.Data) != "" {
+				return errors.New("unexpected text outside XML root")
+			}
+		}
+		return nil
+	}
+	for doc := root; doc != nil; doc = doc.NextSibling {
+		if doc.Type == xmlquery.DocumentNode {
+			for n := doc.FirstChild; n != nil; n = n.NextSibling {
+				if err := check(n); err != nil {
+					return nil, err
+				}
+			}
+		} else if err := check(doc); err != nil {
+			return nil, err
+		}
+	}
+	if roots != 1 {
+		return nil, errors.New("XML must contain exactly one root element")
 	}
 	return &Document{root: root}, nil
 }

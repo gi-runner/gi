@@ -2,6 +2,7 @@ package httpx
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -12,6 +13,12 @@ import (
 	"github.com/gi-runner/gi/internal/engine"
 )
 
+var responseBufPool = sync.Pool{
+	New: func() any {
+		return new([32768]byte)
+	},
+}
+
 type client struct {
 	c          *http.Client
 	mu         sync.Mutex
@@ -19,16 +26,11 @@ type client struct {
 }
 
 func New(c *http.Client) *client {
-	if c == nil {
-		c = http.DefaultClient
-	}
-	return &client{c: c}
+	return &client{c: cmp.Or(c, http.DefaultClient)}
 }
 
 func Pool(vus int) *http.Client {
-	if vus < 2 {
-		vus = 2
-	}
+	vus = max(vus, 2)
 	var base *http.Transport
 	if t, ok := http.DefaultTransport.(*http.Transport); ok {
 		base = t.Clone()
@@ -79,7 +81,7 @@ func (c *client) Send(ctx context.Context, call engine.Call) (engine.Reply, erro
 		return engine.Reply{Duration: time.Since(started)}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
+	raw, err := readResponse(resp.Body, maxBody)
 	elapsed := time.Since(started)
 	if err != nil {
 		return engine.Reply{Status: resp.StatusCode, Duration: elapsed}, err
@@ -94,4 +96,19 @@ func (c *client) Send(ctx context.Context, call engine.Call) (engine.Reply, erro
 		Body:     raw,
 		Duration: elapsed,
 	}, nil
+}
+
+// A reply owns its bytes; only temporary read storage can be reused.
+func readResponse(body io.Reader, limit int64) ([]byte, error) {
+	scratch := responseBufPool.Get().(*[32768]byte) //nolint:forcetypeassert // This private pool stores only fixed-size response scratch arrays.
+	defer responseBufPool.Put(scratch)
+	reader := io.LimitReader(body, limit+1)
+	n, err := io.ReadFull(reader, scratch[:])
+	if err == io.EOF || err == io.ErrUnexpectedEOF {
+		return bytes.Clone(scratch[:n]), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return io.ReadAll(io.MultiReader(bytes.NewReader(scratch[:n]), reader))
 }

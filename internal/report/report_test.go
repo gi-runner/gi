@@ -153,3 +153,30 @@ Scenario: hidden
 		}
 	}
 }
+
+func TestEndpointAggregationIsVisibleInReports(t *testing.T) {
+	result := load.Result{EndpointLimit: 2, EndpointOverflow: 5, Requests: 7, Endpoints: []load.Endpoint{{Name: "[other endpoints]", Count: 5}}}
+	doc := report.Document{Mode: "load", Load: &result}
+	dir := t.TempDir()
+	htmlPath, jsonPath := filepath.Join(dir, "report.html"), filepath.Join(dir, "report.json")
+	if err := report.WriteHTML(htmlPath, doc); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.WriteJSON(jsonPath, doc); err != nil {
+		t.Fatal(err)
+	}
+	html, err := os.ReadFile(htmlPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(html), "5 requests aggregated") || !strings.Contains(string(html), "[other endpoints]") {
+		t.Fatal("HTML hid endpoint aggregation")
+	}
+	raw, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"endpointLimit": 2`) || !strings.Contains(string(raw), `"endpointOverflow": 5`) {
+		t.Fatal("JSON hid endpoint aggregation")
+	}
+}

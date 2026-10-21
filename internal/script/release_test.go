@@ -56,3 +56,29 @@ func FuzzSetPath(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, path string) { v := New(); v.Set("x", map[string]any{}); _ = v.SetPath(path, 1) })
 }
+
+func TestExportReadsEachGetterOnce(t *testing.T) {
+	v := New()
+	got, err := v.Eval(`(function(){let reads=0;return {get value(){return ++reads}}})()`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	object, ok := got.(map[string]any)
+	if !ok || object["value"] != int64(1) {
+		t.Fatalf("export evaluated a getter repeatedly: %v", got)
+	}
+}
+
+func TestExportGetterFailureIsAnError(t *testing.T) {
+	v := New()
+	if _, err := v.Eval(`({get value(){throw Error('getter failed')}})`); err == nil {
+		t.Fatal("getter exception was lost")
+	}
+	if err := v.EvalConfig(`({get value(){throw Error('config getter failed')}})`); err == nil {
+		t.Fatal("config getter exception was lost")
+	}
+	got, err := v.Eval("1+1")
+	if err != nil || got != int64(2) {
+		t.Fatalf("runtime did not recover: %v %v", got, err)
+	}
+}

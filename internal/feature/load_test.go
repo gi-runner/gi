@@ -42,3 +42,24 @@ Scenario: ok
 		t.Fatalf("%+v", f.Load)
 	}
 }
+
+func TestMalformedLoadSettingsDoNotFallBackToDefaults(t *testing.T) {
+	for _, setting := range []string{"rate=oops", "vus=99999999999999999999999", "duration=forever", "duration=0s", "warmup=-1s", "rps=no", "maxInflight=oops", "rates=1000", "rate", "stage", "threshold", ""} {
+		_, err := Parse("bad-load.feature", "# gi-load: "+setting+"\nFeature: bad load\nScenario: never runs\n* assert true\n")
+		if err == nil {
+			t.Errorf("silently accepted gi-load: %s", setting)
+		}
+	}
+}
+
+func TestEndpointLimitComment(t *testing.T) {
+	f, err := Parse("limits.feature", "# gi-load: maxEndpoints=3\nFeature: limits\nScenario: ok\n* assert true\n")
+	if err != nil || f.Load.MaxEndpoints != 3 {
+		t.Fatalf("endpoint limit: %v %v", f, err)
+	}
+	for _, value := range []string{"0", "-1", "oops"} {
+		if _, err := Parse("limits.feature", "# gi-load: maxEndpoints="+value+"\nFeature: limits\nScenario: ok\n* assert true\n"); err == nil {
+			t.Fatalf("accepted maxEndpoints=%s", value)
+		}
+	}
+}

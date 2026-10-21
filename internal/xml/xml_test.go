@@ -95,3 +95,20 @@ func TestSelectedXMLFragmentRetainsInheritedNamespaces(t *testing.T) {
 		t.Fatalf("namespace query after reparse: %v (%v)", got, err)
 	}
 }
+
+func TestDocumentStrictnessWithOneParse(t *testing.T) {
+	for _, raw := range []string{"", `<a/><b/>`, `prefix<a/>`, `<a/>suffix`, `<a>`, `<a>&unknown;</a>`, `<?xml version="1.0" encoding="ISO-8859-1"?><a/>`} {
+		if _, err := ParseDocument(raw); err == nil {
+			t.Errorf("accepted invalid document %q", raw)
+		}
+	}
+	for _, raw := range []string{`<!--before--><a/><!--after-->`, "\n<a/>\n", `<r xmlns:x="urn:x"><x:item a="&amp;">before<![CDATA[<x>]]>after</x:item></r>`} {
+		doc, err := ParseDocument(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ParseDocument(doc.String()); err != nil {
+			t.Fatalf("failed round trip: %v", err)
+		}
+	}
+}

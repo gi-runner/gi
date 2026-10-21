@@ -23,22 +23,29 @@ func NewMockRuntime(ctx context.Context, f *feature.File, prepare func(*script.V
 		return nil, err
 	}
 	defer stop()
-	if err := ex.bind(); err != nil {
+	if err := ex.vm.Try(func() error { return ex.initMock(prepare) }); err != nil {
 		return nil, err
+	}
+	return &MockRuntime{ex: ex}, nil
+}
+
+func (ex *exec) initMock(prepare func(*script.VM)) error {
+	if err := ex.bind(); err != nil {
+		return err
 	}
 	if prepare != nil {
 		prepare(ex.vm)
 	}
 	if err := ex.evalSuite(); err != nil {
-		return nil, err
+		return err
 	}
-	for _, st := range f.Background {
-		sr := ex.runStep(ctx, st)
+	for _, st := range ex.file.Background {
+		sr := ex.runStep(ex.ctx, st)
 		if !sr.Passed {
-			return nil, fmt.Errorf("mock background: %s", sr.Error)
+			return fmt.Errorf("mock background: %s", sr.Error)
 		}
 	}
-	return &MockRuntime{ex: ex}, nil
+	return nil
 }
 
 func (m *MockRuntime) Run(ctx context.Context, vars map[string]any) ScenarioResult {
@@ -48,6 +55,18 @@ func (m *MockRuntime) Run(ctx context.Context, vars map[string]any) ScenarioResu
 		return ScenarioResult{Error: err.Error(), Canceled: true}
 	}
 	defer stop()
+	var res ScenarioResult
+	if err := e.vm.Try(func() error {
+		res = m.run(ctx, vars)
+		return nil
+	}); err != nil {
+		return ScenarioResult{Error: err.Error(), Canceled: ctx.Err() != nil}
+	}
+	return res
+}
+
+func (m *MockRuntime) run(ctx context.Context, vars map[string]any) ScenarioResult {
+	e := m.ex
 	e.ctx = ctx
 	for _, k := range []string{"response", "responseStatus", "responseHeaders", "responseDelay", "pathParams"} {
 		e.vm.Set(k, value.Absent{})

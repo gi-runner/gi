@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"uuid"
 
 	"github.com/gi-runner/gi/internal/value"
@@ -88,6 +89,11 @@ func Match(actual, expected any, mode Mode, ctx Context) Result {
 	} else {
 		ctx.Root = value.Normalize(ctx.Root)
 	}
+	return matchNormalized(actual, expected, mode, ctx)
+}
+
+// Inputs and the predicate root are detached once at the public boundary.
+func matchNormalized(actual, expected any, mode Mode, ctx Context) Result {
 	neg := mode == NotEquals || mode == NotContains || mode == NotWithin
 	inner := mode
 	switch mode {
@@ -138,11 +144,13 @@ func MatchEach(actual, expected any, mode Mode, ctx Context) Result {
 	}
 	if ctx.Root == nil {
 		ctx.Root = actual
+	} else {
+		ctx.Root = value.Normalize(ctx.Root)
 	}
 	var fails []Failure
 	var idxs []int
 	for i, el := range arr {
-		child := Match(el, expected, mode, ctx)
+		child := matchNormalized(el, expected, mode, ctx)
 		if child.Err != nil {
 			return child
 		}
@@ -237,33 +245,13 @@ func matchValue(actual, expected any, mode Mode, path string, ctx *Context) []Fa
 }
 
 func matchEquals(actual, expected any, path string, ctx *Context) []Failure {
+	if equal, handled := scalarEqual(actual, expected); handled {
+		if equal {
+			return nil
+		}
+		return fail(path, "not equal", actual, expected)
+	}
 	switch a := actual.(type) {
-	case nil:
-		return nil
-	case bool:
-		b, ok := expected.(bool)
-		if !ok || a != b {
-			return fail(path, "not equal", actual, expected)
-		}
-		return nil
-	case int64, float64:
-		eq, _ := value.NumbersEqual(actual, expected)
-		if eq {
-			return nil
-		}
-		return fail(path, "not equal", actual, expected)
-	case string:
-		s, ok := expected.(string)
-		if !ok || a != s {
-			return fail(path, "not equal", actual, expected)
-		}
-		return nil
-	case []byte:
-		b, ok := expected.([]byte)
-		if ok && bytes.Equal(a, b) {
-			return nil
-		}
-		return fail(path, "not equal", actual, expected)
 	case []any:
 		exp, ok := expected.([]any)
 		if !ok {
@@ -289,6 +277,38 @@ func matchEquals(actual, expected any, path string, ctx *Context) []Failure {
 		}
 		return fail(path, "not equal", actual, expected)
 	}
+}
+
+// Literal candidates can be compared without constructing discarded diagnostics.
+func scalarEqual(actual, expected any) (equal, handled bool) {
+	switch a := actual.(type) {
+	case nil:
+		return expected == nil, true
+	case bool:
+		b, ok := expected.(bool)
+		return ok && a == b, true
+	case int64, float64:
+		equal, _ := value.NumbersEqual(actual, expected)
+		return equal, true
+	case string:
+		b, ok := expected.(string)
+		return ok && a == b, true
+	case []byte:
+		b, ok := expected.([]byte)
+		return ok && bytes.Equal(a, b), true
+	default:
+		return false, false
+	}
+}
+
+func pairMatches(actual, expected any, mode Mode, ctx *Context) bool {
+	marker, ok := expected.(string)
+	if !ok || !strings.HasPrefix(marker, "#") {
+		if equal, handled := scalarEqual(actual, expected); handled {
+			return equal
+		}
+	}
+	return len(matchValue(actual, expected, childMode(mode, actual), "$", ctx)) == 0
 }
 
 func matchContains(actual, expected any, mode Mode, path string, ctx *Context) []Failure {
@@ -360,39 +380,18 @@ func matchLists(actual, expected []any, mode Mode, path string, ctx *Context) []
 
 // Each expected item is paired with one actual item. Pairs are scored once.
 func assignAll(actual, expected []any, mode Mode, ctx *Context) bool {
+	if equal, handled := literalBagEqual(actual, expected); handled {
+		return equal
+	}
 	edges := make([][]int, len(expected))
 	for i, exp := range expected {
 		for j, act := range actual {
-			child := childMode(mode, act)
-			if len(matchValue(act, exp, child, "$", ctx)) == 0 {
+			if pairMatches(act, exp, mode, ctx) {
 				edges[i] = append(edges[i], j)
 			}
 		}
 	}
-	owner := make([]int, len(actual))
-	for i := range owner {
-		owner[i] = -1
-	}
-	var visit func(i int, seen []bool) bool
-	visit = func(i int, seen []bool) bool {
-		for _, j := range edges[i] {
-			if seen[j] {
-				continue
-			}
-			seen[j] = true
-			if owner[j] < 0 || visit(owner[j], seen) {
-				owner[j] = i
-				return true
-			}
-		}
-		return false
-	}
-	for i := range expected {
-		if !visit(i, make([]bool, len(actual))) {
-			return false
-		}
-	}
-	return true
+	return perfectMatching(edges, len(actual))
 }
 
 func matchMaps(actual, expected map[string]any, mode Mode, path string, ctx *Context) []Failure {
@@ -605,6 +604,31 @@ func parenWraps(s string) bool {
 	return false
 }
 
+var (
+	regexMu    sync.RWMutex
+	regexCache = make(map[string]*regexp.Regexp)
+)
+
+func getRegex(pattern string) (*regexp.Regexp, error) {
+	regexMu.RLock()
+	re := regexCache[pattern]
+	regexMu.RUnlock()
+	if re != nil {
+		return re, nil
+	}
+	re, err := regexp.Compile(`\A(?:` + pattern + `)\z`)
+	if err != nil {
+		return nil, err
+	}
+	regexMu.Lock()
+	// Large expressions compile normally without occupying the process-wide cache.
+	if len(regexCache) < 512 && len(pattern) <= 4096 {
+		regexCache[pattern] = re
+	}
+	regexMu.Unlock()
+	return re, nil
+}
+
 func matchMarker(actual any, m marker, raw string, mode Mode, path string, ctx *Context) []Failure {
 	if m.kind == "embed" {
 		if ctx.Eval == nil {
@@ -634,7 +658,7 @@ func matchMarker(actual any, m marker, raw string, mode Mode, path string, ctx *
 		return matchArrayMarker(actual, m, raw, path, ctx)
 	}
 	if m.kind == "regex" {
-		if _, err := regexp.Compile(`\A(?:` + m.regex + `)\z`); err != nil {
+		if _, err := getRegex(m.regex); err != nil {
 			ctx.err = err
 			return fail(path, "invalid regex", actual, raw)
 		}
@@ -686,7 +710,7 @@ func validatorOK(actual any, m marker) bool {
 		if !ok {
 			return false
 		}
-		re, err := regexp.Compile(`\A(?:` + m.regex + `)\z`)
+		re, err := getRegex(m.regex)
 		if err != nil {
 			return false
 		}

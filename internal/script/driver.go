@@ -3,7 +3,6 @@ package script
 import (
 	"errors"
 
-	"github.com/gi-runner/gi/internal/value"
 	"github.com/grafana/sobek"
 )
 
@@ -44,24 +43,50 @@ func (v *VM) driverCall(name string, args []any) sobek.Value {
 }
 func (v *VM) driverFunction(name string, prefix []any) func(sobek.FunctionCall) sobek.Value {
 	return func(call sobek.FunctionCall) sobek.Value {
-		args := append([]any{}, prefix...)
-		for _, a := range call.Arguments {
-			args = append(args, value.Normalize(a.Export()))
-		}
+		args := exportArgs(call.Arguments, prefix)
 		return v.driverCall(name, args)
 	}
 }
+
+// Global helpers stay available before a browser is opened. The driver object
+// and its navigation methods are created only when JavaScript first reads it.
 func (v *VM) bindDriver() {
+	functions := make(map[string]sobek.Value)
+	for _, name := range driverMethods {
+		if driverGlobal(name) {
+			fn := v.rt.ToValue(v.driverFunction(name, nil))
+			functions[name] = fn
+			_ = v.rt.Set(name, fn)
+		}
+	}
+	set := func(val sobek.Value) {
+		if err := v.rt.GlobalObject().DefineDataProperty("driver", val, sobek.FLAG_TRUE, sobek.FLAG_TRUE, sobek.FLAG_TRUE); err != nil {
+			panic(v.rt.NewGoError(err))
+		}
+	}
+	getter := v.rt.ToValue(func(sobek.FunctionCall) sobek.Value {
+		obj := v.driverObject(functions)
+		set(obj)
+		return obj
+	})
+	setter := v.rt.ToValue(func(call sobek.FunctionCall) sobek.Value {
+		set(call.Argument(0))
+		return sobek.Undefined()
+	})
+	if err := v.rt.GlobalObject().DefineAccessorProperty("driver", getter, setter, sobek.FLAG_TRUE, sobek.FLAG_TRUE); err != nil {
+		panic(v.rt.NewGoError(err))
+	}
+}
+
+func (v *VM) driverObject(functions map[string]sobek.Value) *sobek.Object {
 	obj := v.rt.NewObject()
 	_ = obj.Set("__gi", true)
 	for _, name := range driverMethods {
-		fn := v.rt.ToValue(v.driverFunction(name, nil))
-		_ = obj.Set(name, fn)
-		// Navigation methods are available on driver; element helpers also have
-		// the traditional Karate global form, e.g. waitFor('#name').input('Ada').
-		if driverGlobal(name) {
-			_ = v.rt.Set(name, fn)
+		fn := functions[name]
+		if fn == nil {
+			fn = v.rt.ToValue(v.driverFunction(name, nil))
 		}
+		_ = obj.Set(name, fn)
 	}
 	for _, property := range []struct{ name, action string }{{"url", "getUrl"}, {"title", "title"}} {
 		getter := v.rt.ToValue(v.driverFunction(property.action, nil))
@@ -73,7 +98,7 @@ func (v *VM) bindDriver() {
 			panic(err)
 		}
 	}
-	_ = v.rt.Set("driver", obj)
+	return obj
 }
 func (v *VM) elementObject(locator string) sobek.Value {
 	obj := v.rt.NewObject()

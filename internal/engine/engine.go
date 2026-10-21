@@ -192,24 +192,30 @@ func newExec(ctx context.Context, f *feature.File, opt Options) *exec {
 }
 
 func sessionFrom(opt Options) session {
-	jar := newCookieStore()
-	s := session{timeout: opt.Timeout, follow: true, jar: jar}
+	s := session{timeout: opt.Timeout, follow: true}
 	if opt.inherited != nil {
-		s = *opt.inherited
+		s = persistentSession(*opt.inherited)
 		s.jar = opt.inherited.jar.fork()
-		s.headers = cloneHeader(s.headers)
-		s.cookies = append([][2]string(nil), s.cookies...)
-		s.paths = nil
-		s.params = nil
-		s.form = nil
-		s.parts = nil
-		s.body = nil
-		s.hasBody = false
+	} else {
+		s.jar = newCookieStore()
 	}
 	if s.timeout <= 0 {
 		s.timeout = 30 * time.Second
 	}
 
+	return s
+}
+
+// Keep persistent settings without carrying a pending request into another scope.
+func persistentSession(s session) session {
+	s.headers = cloneHeader(s.headers)
+	s.cookies = append([][2]string(nil), s.cookies...)
+	s.paths = nil
+	s.params = nil
+	s.form = nil
+	s.parts = nil
+	s.body = nil
+	s.hasBody = false
 	return s
 }
 
@@ -456,6 +462,20 @@ func runScenario(ctx context.Context, f *feature.File, sc feature.Scenario, opt 
 			res.Error = cerr.Error()
 		}
 	}()
+	if err := vm.Try(func() error {
+		res = ex.executeScenario(res)
+		return nil
+	}); err != nil {
+		res.Passed = false
+		res.Canceled = ctx.Err() != nil
+		res.Error = err.Error()
+	}
+	return res
+}
+
+func (ex *exec) executeScenario(res ScenarioResult) ScenarioResult {
+	ctx, f, sc, opt := ex.ctx, ex.file, ex.scenario, ex.opt
+	vm := ex.vm
 	if err := ex.bind(); err != nil {
 		res.Passed = false
 		res.Canceled = ctx.Err() != nil

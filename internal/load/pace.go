@@ -26,8 +26,11 @@ func waitUntil(ctx context.Context, due time.Time) error {
 
 // Normalize fills defaults and rejects a profile that mixes users with a start rate.
 func Normalize(cfg Config) (Config, error) {
-	if cfg.Warmup < 0 || cfg.VUs < 0 || cfg.VUsTo < 0 || cfg.RPS < 0 || cfg.MaxInFlight < 0 || badNum(cfg.Rate) || badNum(cfg.RateTo) {
+	if cfg.Warmup < 0 || cfg.VUs < 0 || cfg.VUsTo < 0 || cfg.RPS < 0 || cfg.MaxInFlight < 0 || cfg.MaxEndpoints < 0 || badNum(cfg.Rate) || badNum(cfg.RateTo) {
 		return Config{}, errors.New("load profile values must be finite and nonnegative")
+	}
+	if cfg.MaxEndpoints == 0 {
+		cfg.MaxEndpoints = 1000
 	}
 	for _, raw := range cfg.StageText {
 		st, err := ParseStage(raw)

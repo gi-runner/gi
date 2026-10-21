@@ -60,7 +60,6 @@ func (e *exec) match(rest, doc string, sr *StepResult) error {
 		}
 	}
 	ctx := match.Context{
-		Root:   actual,
 		Truthy: e.vm.Truthy,
 		Eval:   e.vm.Eval,
 	}
@@ -133,20 +132,10 @@ func splitMatch(s string) (lhs string, mode match.Mode, rhs string, ok bool) {
 }
 
 func opBounded(s string, start, end int, text string) bool {
-	if text[0] == '!' || text[0] == '=' {
+	if text == "==" || text == "!=" {
 		return true
 	}
-	if start > 0 && isWord(s[start-1]) {
-		return false
-	}
-	if end < len(s) && isWord(s[end]) {
-		return false
-	}
-	return true
-}
-
-func isWord(c byte) bool {
-	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+	return start > 0 && strings.ContainsRune(" \t\r\n", rune(s[start-1])) && (end == len(s) || strings.ContainsRune(" \t\r\n", rune(s[end])))
 }
 
 func firstDiffLine(s string) string {

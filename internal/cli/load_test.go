@@ -100,3 +100,24 @@ func TestRateFlagOverridesFeatureStages(t *testing.T) {
 		t.Fatalf("%+v %v", norm, err)
 	}
 }
+
+func TestEndpointLimitFlag(t *testing.T) {
+	for _, arg := range []string{"3", "0", "-1"} {
+		fs := flag.NewFlagSet("load", flag.ContinueOnError)
+		limit := fs.Int("max-endpoints", 0, "")
+		if err := fs.Parse([]string{"--max-endpoints", arg}); err != nil {
+			t.Fatal(err)
+		}
+		cfg := load.Config{}
+		err := applyLoadFlags(&cfg, loadOptions{fs: fs, maxEndpoints: *limit})
+		if arg != "3" {
+			if err == nil {
+				t.Fatalf("accepted limit %s", arg)
+			}
+			continue
+		}
+		if err != nil || cfg.MaxEndpoints != 3 {
+			t.Fatalf("limit = %d: %v", cfg.MaxEndpoints, err)
+		}
+	}
+}
