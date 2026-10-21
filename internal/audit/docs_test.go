@@ -20,6 +20,7 @@ import (
 	"github.com/gi-runner/gi/internal/httpx"
 	"github.com/gi-runner/gi/internal/mock"
 	"github.com/gi-runner/gi/internal/suite"
+	"github.com/gi-runner/gi/internal/testutil"
 )
 
 // Execute the actual introductory snippets so edits cannot silently break them.
@@ -89,12 +90,9 @@ func TestDocumentationExamples(t *testing.T) {
 
 func documentedFeatures(t *testing.T, path string) []string {
 	t.Helper()
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	text := testutil.ReadMarkdown(t, path)
 	var features []string
-	for _, block := range strings.Split(string(raw), "```gherkin\n")[1:] {
+	for _, block := range strings.Split(text, "```gherkin\n")[1:] {
 		source, _, ok := strings.Cut(block, "```")
 		if !ok {
 			t.Fatalf("unclosed Gherkin block in %s", path)
@@ -161,13 +159,13 @@ func TestDocumentedGoAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	quickstart := documentedFeatures(t, filepath.Join(root, "docs", "quickstart.md"))
+	if len(quickstart) != 2 {
+		t.Fatalf("quick start has %d complete features, want mock and test", len(quickstart))
+	}
 	server := httptest.NewServer(mock.Handler(featureOf(t, filepath.Join(t.TempDir(), "hello.mock.feature"), quickstart[0])))
 	defer server.Close()
-	raw, err := os.ReadFile(filepath.Join(root, "docs", "embedding.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, block, ok := strings.Cut(string(raw), "```go\n")
+	text := testutil.ReadMarkdown(t, filepath.Join(root, "docs", "embedding.md"))
+	_, block, ok := strings.Cut(text, "```go\n")
 	if !ok {
 		t.Fatal("no Go example in embedding docs")
 	}

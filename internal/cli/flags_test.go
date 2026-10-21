@@ -1,13 +1,14 @@
 package cli
 
 import (
-	"github.com/spf13/pflag"
-	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/gi-runner/gi/internal/testutil"
+	"github.com/spf13/pflag"
 )
 
 func TestFlagsPreserveFileTerminator(t *testing.T) {
@@ -34,11 +35,7 @@ func TestFlagsPreserveFileTerminator(t *testing.T) {
 }
 
 func TestDocumentedFlagsMatchCommands(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "cli.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	reference := string(raw)
+	reference := testutil.ReadMarkdown(t, filepath.Join("..", "..", "docs", "cli.md"))
 	code := 0
 	root := newCommand(&code)
 	for _, name := range []string{"test", "load", "mock"} {

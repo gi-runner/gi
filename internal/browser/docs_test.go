@@ -3,24 +3,21 @@ package browser
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/gi-runner/gi/internal/engine"
 	"github.com/gi-runner/gi/internal/feature"
+	"github.com/gi-runner/gi/internal/testutil"
 )
 
 func TestDocumentedBrowserExample(t *testing.T) {
 	if !chromePresent() {
 		t.Skip("chrome is not installed")
 	}
-	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "browser.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, block, ok := strings.Cut(string(raw), "```gherkin\n")
+	text := testutil.ReadMarkdown(t, filepath.Join("..", "..", "docs", "browser.md"))
+	_, block, ok := strings.Cut(text, "```gherkin\n")
 	if !ok {
 		t.Fatal("browser documentation has no Gherkin example")
 	}
