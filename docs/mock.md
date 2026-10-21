@@ -31,6 +31,6 @@ The request body is `request` when it is JSON, and the raw text otherwise. Set `
 
 `@setup` and `@ignore` scenarios are not routes.
 
-`Background` executes once when the mock starts. User variables remain in one runtime across requests; requests execute serially so state mutations are safe. Request and response metadata are reset for each request. Routes can also use expressions in their scenario names, such as `Scenario: pathMatches('/users/{id}') && methodIs('get')`.
+`Background` executes once when the mock starts. User variables remain in one runtime across requests. Requests run one at a time, so state mutations are safe, and a cancelled request returns without waiting for the one in progress. Request and response metadata are reset for each request. Routes can also use expressions in their scenario names, such as `Scenario: pathMatches('/users/{id}') && methodIs('get')`.
 
 Available request variables include `requestPath`, `requestMethod`, `requestUri`, `requestBytes`, `requestHeaders`, `requestParams`, and `requestCookies`. `paramValue(name)` reads the first query value and `paramExists(name)` checks for it. Set `responseHeaders` and `responseDelay` when needed. A matcher exception returns HTTP 500. Request bodies over 8 MiB return HTTP 413.

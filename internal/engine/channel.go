@@ -48,10 +48,7 @@ func (e *exec) openChannel(kind string, spec map[string]any) (any, error) {
 		return nil, err
 	}
 	if link.Close != nil {
-		closeLink := link.Close
-		var once sync.Once
-		var closeErr error
-		link.Close = func() error { once.Do(func() { closeErr = closeLink() }); return closeErr }
+		link.Close = sync.OnceValue(link.Close)
 	}
 	e.links = append(e.links, link)
 	return e.vm.Bridge(map[string]func([]any) (any, error){

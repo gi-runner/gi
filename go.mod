@@ -5,6 +5,7 @@ go 1.27.2
 require (
 	github.com/antchfx/xmlquery v1.5.2
 	github.com/antchfx/xpath v1.3.9
+	github.com/chromedp/cdproto v0.157.8
 	github.com/chromedp/chromedp v0.21.0
 	github.com/coder/websocket v1.8.15
 	github.com/cucumber/gherkin/go/v42 v42.0.1
@@ -14,13 +15,13 @@ require (
 	github.com/twmb/franz-go v1.22.2
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20261018232743-f49d7ddc2cb4
 	golang.org/x/net v0.61.0
+	golang.org/x/sys v0.49.0
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
-	github.com/chromedp/cdproto v0.157.8 // indirect
 	github.com/dlclark/regexp2/v2 v2.8.4 // indirect
 	github.com/go-json-experiment/json v0.0.0-20260213210345-44df1a37e875 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.4+incompatible // indirect
@@ -30,7 +31,6 @@ require (
 	github.com/klauspost/compress v1.20.3 // indirect
 	github.com/pierrec/lz4/v4 v4.1.33 // indirect
 	github.com/twmb/franz-go/pkg/kmsg v1.15.0 // indirect
-	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800 // indirect
 )

@@ -246,15 +246,10 @@ func (d *Document) mutate(path string, val any, remove bool) error {
 		if remove {
 			return nil
 		}
-		parentPath, name, found := strings.LastIndex(path, "/"), "", false
-		if parentPath >= 0 {
-			name = path[parentPath+1:]
-			found = name != "" && !strings.ContainsAny(name, "[]()*")
-		}
-		if !found {
+		parentExpr, name, found := strings.CutLast(path, "/")
+		if !found || name == "" || strings.ContainsAny(name, "[]()*") {
 			return fmt.Errorf("XPath %q selected no nodes", path)
 		}
-		parentExpr := path[:parentPath]
 		parents, err := d.expression(parentExpr)
 		if err != nil {
 			return err

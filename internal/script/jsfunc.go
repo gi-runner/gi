@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/grafana/sobek"
+	"github.com/grafana/sobek/parser"
 )
 
 // jsFunc stays on the runtime that created it.
@@ -137,47 +138,14 @@ func (v *VM) callCached(f jsFunc, args []sobek.Value) sobek.Value {
 		stop = origin.arm(v.ctx, func() {})
 	}
 	defer stop()
-	restore := origin.install(f.env)
-	defer restore()
-	// Runtime helpers describe the current caller, not a completed scenario.
-	bindings := origin.bindings
-	if origin != v {
-		if err := origin.Bind(v.bindings); err != nil {
-			panic(v.rt.NewGoError(err))
-		}
-		defer func() { _ = origin.Bind(bindings) }()
-	}
-	fn, ok := sobek.AssertFunction(f.v)
-	if !ok {
-		panic(v.rt.NewGoError(errors.New("cached value is not a function")))
-	}
-	in := make([]sobek.Value, len(args))
-	for i, arg := range args {
-		switch {
-		case sobek.IsUndefined(arg):
-			in[i] = sobek.Undefined()
-		case sobek.IsNull(arg):
-			in[i] = sobek.Null()
-		default:
-			if origin == v {
-				in[i] = arg
-			} else {
-				in[i] = origin.toJS(v.export(arg))
-			}
-		}
-	}
-	out, err := fn(sobek.Undefined(), in...)
+	out, err := origin.invokeCached(v, f, args)
 	if err != nil {
 		panic(v.rt.NewGoError(err))
 	}
-	if sobek.IsUndefined(out) {
-		return sobek.Undefined()
-	}
-	if origin == v {
+	if origin == v || sobek.IsUndefined(out) {
 		return out
 	}
-	exported := origin.seal(origin.export(out), f.env)
-	return v.toJS(exported)
+	return v.toJS(origin.seal(origin.export(out), f.env))
 }
 
 func (origin *VM) evalCached(caller *VM, f jsFunc, args []sobek.Value) (any, bool, error) {
@@ -187,35 +155,10 @@ func (origin *VM) evalCached(caller *VM, f jsFunc, args []sobek.Value) (any, boo
 	if err := caller.ctx.Err(); err != nil {
 		return nil, false, err
 	}
-	// A handed-off call executes on the parked owner's goroutine but still
-	// belongs to the caller's deadline. The outer owner retains its lease.
+	// A handed-off call retains the parked owner's lease and uses the caller's deadline.
 	stop := origin.arm(caller.ctx, func() {})
 	defer stop()
-	restore := origin.install(f.env)
-	defer restore()
-	bindings := origin.bindings
-	if origin != caller {
-		if err := origin.Bind(caller.bindings); err != nil {
-			return nil, false, err
-		}
-		defer func() { _ = origin.Bind(bindings) }()
-	}
-	fn, ok := sobek.AssertFunction(f.v)
-	if !ok {
-		return nil, false, errors.New("cached value is not a function")
-	}
-	in := make([]sobek.Value, len(args))
-	for i, arg := range args {
-		switch {
-		case sobek.IsUndefined(arg):
-			in[i] = sobek.Undefined()
-		case sobek.IsNull(arg):
-			in[i] = sobek.Null()
-		default:
-			in[i] = origin.toJS(caller.export(arg))
-		}
-	}
-	out, err := fn(sobek.Undefined(), in...)
+	out, err := origin.invokeCached(caller, f, args)
 	if err != nil {
 		return nil, false, err
 	}
@@ -223,6 +166,36 @@ func (origin *VM) evalCached(caller *VM, f jsFunc, args []sobek.Value) (any, boo
 		return nil, sobek.IsUndefined(out), nil
 	}
 	return origin.seal(origin.export(out), f.env), false, nil
+}
+
+// invokeCached is the single invocation path after runtime ownership is established.
+func (origin *VM) invokeCached(caller *VM, f jsFunc, args []sobek.Value) (out sobek.Value, err error) {
+	restore := origin.install(f.env)
+	defer restore()
+	if origin != caller {
+		bindings := origin.bindings
+		if err := origin.Bind(caller.bindings); err != nil {
+			return nil, err
+		}
+		defer func() {
+			if restoreErr := origin.Bind(bindings); restoreErr != nil {
+				err = errors.Join(err, restoreErr)
+			}
+		}()
+	}
+	fn, ok := sobek.AssertFunction(f.v)
+	if !ok {
+		return nil, errors.New("cached value is not a function")
+	}
+	in := make([]sobek.Value, len(args))
+	for i, arg := range args {
+		if origin == caller || sobek.IsUndefined(arg) || sobek.IsNull(arg) {
+			in[i] = arg
+		} else {
+			in[i] = origin.toJS(caller.export(arg))
+		}
+	}
+	return fn(sobek.Undefined(), in...)
 }
 
 func (v *VM) install(env *functionEnv) func() {
@@ -258,7 +231,7 @@ func (v *VM) install(env *functionEnv) func() {
 func (v *VM) Seal(val any) any {
 	env := &functionEnv{values: make(map[string]sobek.Value)}
 	for name := range v.vars {
-		if strings.HasPrefix(name, "__") || !jsIdent(name) {
+		if strings.HasPrefix(name, "__") || !parser.IsIdentifier(name) {
 			continue
 		}
 		if rv := v.rt.Get(name); rv != nil {
@@ -295,22 +268,6 @@ func (v *VM) seal(val any, env *functionEnv) any {
 	default:
 		return val
 	}
-}
-
-func jsIdent(name string) bool {
-	if name == "" {
-		return false
-	}
-	for i, r := range name {
-		if r == '_' || r == '$' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
-			continue
-		}
-		if i > 0 && r >= '0' && r <= '9' {
-			continue
-		}
-		return false
-	}
-	return true
 }
 
 func (v *VM) compileFn(src string) sobek.Value {

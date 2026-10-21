@@ -23,13 +23,17 @@ import (
 	"google.golang.org/protobuf/types/dynamicpb"
 )
 
+var errLinkClosed = errors.New("grpc link closed")
+var errStreamClosed = errors.New("grpc stream closed")
+
 type link struct {
 	conn       *grpc.ClientConn
 	metadata   metadata.MD
 	mu         sync.Mutex
 	services   map[string]protoreflect.ServiceDescriptor
 	descriptor bool
-	streams    []*rpcStream
+	streams    map[*rpcStream]struct{}
+	closed     bool
 }
 
 func Dial(ctx context.Context, spec map[string]any) (engine.Link, error) {
@@ -73,10 +77,16 @@ func Dial(ctx context.Context, spec map[string]any) (engine.Link, error) {
 
 func (l *link) Close() error {
 	l.mu.Lock()
+	if l.closed {
+		l.mu.Unlock()
+		return nil
+	}
+	l.closed = true
 	streams := l.streams
+	l.streams = nil
 	l.mu.Unlock()
-	for _, s := range streams {
-		_ = s.close()
+	for stream := range streams {
+		_ = stream.close()
 	}
 	return l.conn.Close()
 }
@@ -120,9 +130,23 @@ func (l *link) Open(ctx context.Context, method string) (engine.Stream, error) {
 		cancel()
 		return engine.Stream{}, err
 	}
-	s := &rpcStream{cancel: cancel, cs: cs, in: md.Input(), out: md.Output()}
+	s := &rpcStream{cs: cs, in: md.Input(), out: md.Output()}
+	s.closeOnce = sync.OnceFunc(func() {
+		cancel()
+		l.mu.Lock()
+		delete(l.streams, s)
+		l.mu.Unlock()
+	})
 	l.mu.Lock()
-	l.streams = append(l.streams, s)
+	if l.closed {
+		l.mu.Unlock()
+		_ = s.close()
+		return engine.Stream{}, errLinkClosed
+	}
+	if l.streams == nil {
+		l.streams = make(map[*rpcStream]struct{})
+	}
+	l.streams[s] = struct{}{}
 	l.mu.Unlock()
 	return engine.Stream{Send: s.send, Receive: s.receive, CloseSend: s.closeSend, Close: s.close}, nil
 }
@@ -149,15 +173,17 @@ func (l *link) lookup(ctx context.Context, method string) (string, protoreflect.
 }
 
 type rpcStream struct {
-	cancel context.CancelFunc
-	once   sync.Once
-	cs     grpc.ClientStream
-	in     protoreflect.MessageDescriptor
-	out    protoreflect.MessageDescriptor
-	mu     sync.Mutex
+	closeOnce func()
+	cs        grpc.ClientStream
+	in        protoreflect.MessageDescriptor
+	out       protoreflect.MessageDescriptor
+	sendMu    sync.Mutex
+	recvMu    sync.Mutex
 }
 
 func (s *rpcStream) send(ctx context.Context, v any) error {
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
 	msg, err := messageIn(s.in, v)
 	if err != nil {
 		return err
@@ -166,42 +192,47 @@ func (s *rpcStream) send(ctx context.Context, v any) error {
 }
 
 func (s *rpcStream) receive(ctx context.Context) (any, error) {
+	s.recvMu.Lock()
+	defer s.recvMu.Unlock()
 	msg := dynamicpb.NewMessage(s.out)
 	if err := s.op(ctx, func() error { return s.cs.RecvMsg(msg) }); err != nil {
+		_ = s.close()
 		return nil, err
 	}
 	return messageOut(msg)
 }
 
 func (s *rpcStream) closeSend() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
 	return s.cs.CloseSend()
 }
 
 func (s *rpcStream) close() error {
-	s.once.Do(func() { s.cancel() })
+	s.closeOnce()
 	return nil
 }
 
 // op waits for one send or receive. The stream stays open after a
 // successful call. A step timeout cancels it.
 func (s *rpcStream) op(ctx context.Context, fn func() error) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	errc := make(chan error, 1)
-	go func() { errc <- fn() }()
-	select {
-	case err := <-errc:
-		if errors.Is(err, io.EOF) {
-			return errors.New("grpc stream closed")
-		}
+	if err := ctx.Err(); err != nil {
+		_ = s.close()
 		return err
-	case <-ctx.Done():
-		s.cancel()
-		<-errc
+	}
+	done := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() { _ = s.close(); close(done) })
+	err := fn()
+	if !stop() {
+		<-done
+	}
+	if ctx.Err() != nil {
 		return ctx.Err()
 	}
+	if errors.Is(err, io.EOF) {
+		return errStreamClosed
+	}
+	return err
 }
 
 func messageIn(desc protoreflect.MessageDescriptor, v any) (*dynamicpb.Message, error) {
@@ -234,11 +265,16 @@ func metadataFromContext(ctx context.Context) metadata.MD {
 
 func (l *link) service(ctx context.Context, name string) (protoreflect.ServiceDescriptor, error) {
 	l.mu.Lock()
-	defer l.mu.Unlock()
-	if service := l.services[name]; service != nil {
-		return service, nil
+	cached := l.services[name]
+	described, closed := l.descriptor, l.closed
+	l.mu.Unlock()
+	if closed {
+		return nil, errLinkClosed
 	}
-	if l.descriptor {
+	if cached != nil {
+		return cached, nil
+	}
+	if described {
 		return nil, fmt.Errorf("grpc service %s is not in the descriptor", name)
 	}
 	files, err := descriptors(ctx, l.conn, name)
@@ -252,6 +288,11 @@ func (l *link) service(ctx context.Context, name string) (protoreflect.ServiceDe
 	service, ok := desc.(protoreflect.ServiceDescriptor)
 	if !ok {
 		return nil, fmt.Errorf("%s is not a service", name)
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed {
+		return nil, errLinkClosed
 	}
 	l.services[name] = service
 	return service, nil

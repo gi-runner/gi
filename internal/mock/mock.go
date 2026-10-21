@@ -19,7 +19,6 @@ import (
 
 func Handler(f *feature.File) http.Handler {
 	st := &store{data: map[string]any{}}
-	var mu sync.Mutex
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	runtime, initErr := engine.NewMockRuntime(ctx, f, func(vm *script.VM) { st.bind(vm); bindMatchers(vm) })
 	cancel()
@@ -50,9 +49,7 @@ func Handler(f *feature.File) http.Handler {
 			cookies[c.Name] = map[string]any{"name": c.Name, "value": c.Value}
 		}
 		vars := map[string]any{"method": r.Method, "path": r.URL.Path, "requestMethod": r.Method, "requestPath": r.URL.Path, "requestUri": r.URL.RequestURI(), "request": parseRequest(body), "requestBytes": body, "requestHeaders": headers, "requestParams": params, "requestCookies": cookies}
-		mu.Lock()
 		res := runtime.Run(r.Context(), vars)
-		mu.Unlock()
 		if res.Miss {
 			write(w, http.StatusNotFound, map[string]any{"error": "no mock scenario matched"})
 			return

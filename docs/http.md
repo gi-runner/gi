@@ -87,7 +87,7 @@ OAuth2 is the client-credentials grant. The first request of the scenario posts 
 
 ## TLS, proxy and SOAP
 
-`configure connectTimeout = 5000` sets a positive TCP connection timeout in milliseconds. `configure ssl = true` trusts test certificates. For verification use `configure ssl = { trustAll: false, caCert: '/path/ca.pem' }`; optional PEM `cert` and `key` enable mutual TLS, and `algorithm` accepts `TLS`, `TLSv1.2` or `TLSv1.3`. Java keystore formats are unsupported.
+`configure connectTimeout = 5000` sets a positive TCP connection timeout in milliseconds. `configure ssl = true` trusts test certificates. For verification use `configure ssl = { trustAll: false, caCert: '/path/ca.pem' }`; optional PEM `cert` and `key` enable mutual TLS, and `algorithm` accepts `TLS`, `TLSv1.2` or `TLSv1.3`. A CA is added to the transport's current root pool, or to the system pool when that transport has none. Java keystore formats are unsupported.
 
 `configure proxy = 'http://localhost:8080'` selects a proxy. An object accepts `uri`, `username`, `password` and `nonProxyHosts` (Go glob patterns). Null disables proxy use. These transport settings require a standard Go HTTP transport when embedding a custom client.
 

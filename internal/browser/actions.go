@@ -39,8 +39,12 @@ func interceptBody(args []any) (string, int, error) {
 	return string(raw), status, nil
 }
 
-func runAction[T any](ctx context.Context, p *page, action chromedp.Action[T]) (out T, err error) {
-	err = p.act(ctx, func(c context.Context) error { var runErr error; out, runErr = chromedp.Run(c, action); return runErr })
+func (p *page) runAction[T any](ctx context.Context, action chromedp.Action[T]) (out T, err error) {
+	err = p.act(ctx, func(c context.Context) error {
+		var actionErr error
+		out, actionErr = chromedp.Run(c, action)
+		return actionErr
+	})
 	return out, err
 }
 
@@ -84,9 +88,9 @@ func (p *page) Action(ctx context.Context, name string, args []any) (any, error)
 	}
 	selector := text(0)
 	node := nodeExpression(selector, tab.rootExpr())
-	eval := func(src string) (any, error) { return runAction(ctx, p, chromedp.Evaluate[any](src)) }
+	eval := func(src string) (any, error) { return p.runAction(ctx, chromedp.Evaluate[any](src)) }
 	wait := func(src string) (any, error) {
-		return runAction(ctx, p, chromedp.Poll[bool](src, chromedp.WithPollingInterval(50*time.Millisecond)))
+		return p.runAction(ctx, chromedp.Poll[bool](src, chromedp.WithPollingInterval(50*time.Millisecond)))
 	}
 	element := func(code string) (any, error) {
 		return eval("(function(e){if(!e)throw Error('element not found: '+" + strconv.Quote(selector) + ");" + code + "})(" + node + ")")
@@ -103,19 +107,19 @@ func (p *page) Action(ctx context.Context, name string, args []any) (any, error)
 		if len(paths) == 0 {
 			return element("e.value='';e.dispatchEvent(new Event('change',{bubbles:true}));return true")
 		}
-		return runAction(ctx, p, chromedp.SetUploadFiles(chromedp.JSPath(node), paths))
+		return p.runAction(ctx, chromedp.SetUploadFiles(chromedp.JSPath(node), paths))
 	case "getUrl":
-		return runAction(ctx, p, chromedp.Location())
+		return p.runAction(ctx, chromedp.Location())
 	case "title":
-		return runAction(ctx, p, chromedp.Title())
+		return p.runAction(ctx, chromedp.Title())
 	case "back":
-		return runAction(ctx, p, chromedp.NavigateBack())
+		return p.runAction(ctx, chromedp.NavigateBack())
 	case "forward":
-		return runAction(ctx, p, chromedp.NavigateForward())
+		return p.runAction(ctx, chromedp.NavigateForward())
 	case "refresh":
-		return runAction(ctx, p, chromedp.Reload())
+		return p.runAction(ctx, chromedp.Reload())
 	case "screenshot":
-		return runAction(ctx, p, chromedp.FullScreenshot(100))
+		return p.runAction(ctx, chromedp.FullScreenshot(100))
 	case "exists":
 		return eval("Boolean(" + node + ")")
 	case "enabled":
@@ -149,7 +153,7 @@ func (p *page) Action(ctx context.Context, name string, args []any) (any, error)
 		if tab.frame != "" || strings.HasPrefix(selector, "{") {
 			return element("e.click();return true")
 		}
-		return runAction(ctx, p, chromedp.Click(selector))
+		return p.runAction(ctx, chromedp.Click(selector))
 	case "input":
 		if len(args) < 2 {
 			return nil, errors.New("input requires a locator and text")
@@ -157,7 +161,7 @@ func (p *page) Action(ctx context.Context, name string, args []any) (any, error)
 		if tab.frame != "" || strings.HasPrefix(selector, "{") {
 			return element("e.focus();e.value=" + strconv.Quote(text(1)) + ";e.dispatchEvent(new Event('input',{bubbles:true}));return true")
 		}
-		return runAction(ctx, p, chromedp.SendKeys(selector, text(1)))
+		return p.runAction(ctx, chromedp.SendKeys(selector, text(1)))
 	case "locate":
 		return element("return true")
 	case "waitFor":

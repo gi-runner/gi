@@ -12,9 +12,8 @@ import (
 	"github.com/gi-runner/gi/internal/value"
 )
 
-// MockRuntime owns a persistent scenario VM. Its caller must serialize requests.
-// Background executes once; request variables and response metadata are reset
-// for each request, while user-defined state remains in the same JS runtime.
+// MockRuntime owns a persistent scenario VM and runs one request at a time.
+// A cancelled request returns without waiting for the active one.
 type MockRuntime struct{ ex *exec }
 
 func NewMockRuntime(ctx context.Context, f *feature.File, prepare func(*script.VM)) (*MockRuntime, error) {
@@ -44,12 +43,12 @@ func NewMockRuntime(ctx context.Context, f *feature.File, prepare func(*script.V
 
 func (m *MockRuntime) Run(ctx context.Context, vars map[string]any) ScenarioResult {
 	e := m.ex
-	e.ctx = ctx
 	stop, err := e.vm.Watch(ctx)
 	if err != nil {
 		return ScenarioResult{Error: err.Error(), Canceled: true}
 	}
 	defer stop()
+	e.ctx = ctx
 	for _, k := range []string{"response", "responseStatus", "responseHeaders", "responseDelay", "pathParams"} {
 		e.vm.Set(k, value.Absent{})
 	}

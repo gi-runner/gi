@@ -131,7 +131,8 @@ func Run(ctx context.Context, f *feature.File, cfg Config) (Result, error) {
 		th:       thresholds,
 	}
 	if cfg.RPS > 0 {
-		s.limiter = newBucket(runCtx, cfg.RPS)
+		s.limiter = newBucket(cfg.RPS)
+		defer s.limiter.ticker.Stop()
 	}
 	watchCtx, stopWatch := context.WithCancel(ctx)
 	var watchWG sync.WaitGroup
@@ -807,42 +808,24 @@ func compare(actual float64, op string, want float64) bool {
 	}
 }
 
-type bucket struct {
-	ch chan struct{}
-}
+type bucket struct{ ticker *time.Ticker }
 
-func newBucket(ctx context.Context, rps int) *bucket {
-	if rps < 1 {
-		rps = 1
-	}
-	b := &bucket{ch: make(chan struct{}, 1)}
-	interval := time.Second / time.Duration(rps)
+func newBucket(rps int) *bucket {
+	interval := time.Second / time.Duration(max(rps, 1))
 	if interval <= 0 {
 		interval = time.Microsecond
 	}
-	go func() {
-		t := time.NewTicker(interval)
-		defer t.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-t.C:
-				select {
-				case b.ch <- struct{}{}:
-				default:
-				}
-			}
-		}
-	}()
-	return b
+	return &bucket{ticker: time.NewTicker(interval)}
 }
 
 func (b *bucket) wait(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-b.ch:
+	case <-b.ticker.C:
 		return nil
 	}
 }

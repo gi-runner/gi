@@ -43,6 +43,8 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - name: Check module metadata
+        run: go mod tidy -diff
       - name: Check formatting
         run: test -z "$(gofmt -l .)"
       - uses: golangci/golangci-lint-action@v9

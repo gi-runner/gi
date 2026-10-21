@@ -74,22 +74,19 @@ func (s *Suite) Acquire(ctx context.Context, tags []string) (func(), error) {
 				}
 			}
 			l.mu.Unlock()
-			var once sync.Once
-			return func() {
-				once.Do(func() {
-					l.mu.Lock()
-					defer l.mu.Unlock()
-					l.active--
-					l.exclusive = false
-					for name := range names {
-						l.names[name]--
-						if l.names[name] <= 0 {
-							delete(l.names, name)
-						}
+			return sync.OnceFunc(func() {
+				l.mu.Lock()
+				defer l.mu.Unlock()
+				l.active--
+				l.exclusive = false
+				for name := range names {
+					l.names[name]--
+					if l.names[name] <= 0 {
+						delete(l.names, name)
 					}
-					l.notify()
-				})
-			}, nil
+				}
+				l.notify()
+			}), nil
 		}
 		changed := l.changed
 		l.mu.Unlock()

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -79,7 +80,7 @@ func TestMailboxManyWaitersAndWakeups(t *testing.T) {
 func TestMailboxTimeoutAndCancelRaces(t *testing.T) {
 	// Every waiter has an independent watchdog, so a lost wakeup cannot hang CI.
 	for range 200 {
-		s := Open(t.TempDir(), "")
+		s := &Suite{}
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
 		go func() { _, err := s.Listen(ctx, time.Hour, nil); done <- err }()
@@ -103,4 +104,26 @@ func TestMailboxTimeoutAndCancelRaces(t *testing.T) {
 			t.Fatal("expired listener stuck")
 		}
 	}
+}
+
+func TestMailboxSignalImmediatelyBeforeDeadline(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var suite Suite
+		type received struct {
+			value any
+			err   error
+		}
+		done := make(chan received, 1)
+		go func() { value, err := suite.Listen(t.Context(), time.Second, nil); done <- received{value, err} }()
+		synctest.Wait()
+		synctest.Sleep(time.Second - time.Nanosecond)
+		if err := suite.Signal("ready"); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		result := <-done
+		if result.err != nil || result.value != "ready" {
+			t.Fatalf("signal before deadline: %#v %v", result.value, result.err)
+		}
+	})
 }

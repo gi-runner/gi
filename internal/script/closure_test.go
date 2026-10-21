@@ -315,3 +315,23 @@ func TestIsolatedParentCallbackDeadlineAndReuse(t *testing.T) {
 		t.Fatalf("parent poisoned by child cancellation: %v %v", got, err)
 	}
 }
+
+func TestCachedClosureCapturesUnicodeBindings(t *testing.T) {
+	v := New()
+	v.Set("café", int64(1))
+	function, err := v.Eval(`function(){ return ++café }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v.Set("f", v.Seal(function))
+	v.Set("café", int64(100))
+	for _, want := range []int64{2, 3} {
+		got, err := v.Eval("f()")
+		if err != nil || got != want {
+			t.Fatalf("captured binding: %v %v", got, err)
+		}
+	}
+	if got, ok := v.Get("café"); !ok || got != int64(100) {
+		t.Fatalf("caller binding changed: %v", got)
+	}
+}

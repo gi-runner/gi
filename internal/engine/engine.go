@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gi-runner/gi/internal/feature"
@@ -294,16 +295,18 @@ func parallel(n, count int, fn func(int)) {
 		}
 		return
 	}
-	sem := make(chan struct{}, n)
+	var next atomic.Int64
 	var wg sync.WaitGroup
-	for i := range count {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(i int) {
-			defer wg.Done()
-			defer func() { <-sem }()
-			fn(i)
-		}(i)
+	for range n {
+		wg.Go(func() {
+			for {
+				i := int(next.Add(1) - 1)
+				if i >= count {
+					return
+				}
+				fn(i)
+			}
+		})
 	}
 	wg.Wait()
 }

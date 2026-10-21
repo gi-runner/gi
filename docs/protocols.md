@@ -73,7 +73,7 @@ Providers, a full browser cookie jar, and the full fluent retry API remain incom
 * def rpc = karate.channel('grpc', spec)
 ```
 
-For private trust or mutual TLS, use `tls: { caCert: '/path/ca.pem', serverName: 'api.example.com', cert: '/path/client.pem', key: '/path/client-key.pem' }`. Certificate paths are host paths. `cert` and `key` must be provided together. Server certificates and hostnames are verified; system trust is used unless a supplied CA augments it. TLS requires version 1.2 or later. Metadata is sent on reflection, unary calls, and streams. Reflection schemas are cached per link. `call` rejects a streaming method.
+For private trust or mutual TLS, use `tls: { caCert: '/path/ca.pem', serverName: 'api.example.com', cert: '/path/client.pem', key: '/path/client-key.pem' }`. Certificate paths are host paths. `cert` and `key` must be provided together. Server certificates and hostnames are verified. A supplied CA is added to the system trust pool. HTTP, gRPC, and Kafka share that PEM loading. TLS requires version 1.2 or later. Metadata is sent on reflection, unary calls, and streams. Reflection schemas are cached per link. `call` rejects a streaming method.
 
 `descriptor` is the path of a file written by `protoc --descriptor_set_out`. The file is a `FileDescriptorSet`. When it is set, gi does not call reflection, and a service missing from the file fails the call.
 
