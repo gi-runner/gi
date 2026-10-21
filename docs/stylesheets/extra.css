@@ -79,6 +79,7 @@
   line-height: 1.65;
 }
 .gi-search {
+  position: relative;
   display: flex;
   align-items: center;
   gap: .8rem;
@@ -91,7 +92,23 @@
   color: var(--md-default-fg-color);
   font: inherit;
   text-align: left;
-  cursor: pointer;
+}
+.gi-search input {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  box-shadow: none;
+}
+.gi-search input:focus {
+  outline: 0;
+}
+.gi-search input::placeholder {
+  color: var(--md-default-fg-color--light);
 }
 .gi-search__icon {
   display: flex;
@@ -104,8 +121,63 @@
 .gi-search kbd {
   margin-left: auto;
 }
-.gi-search__example {
+.gi-search__results {
+  position: absolute;
+  z-index: 4;
+  top: calc(100% + .45rem);
+  left: 0;
+  right: 0;
+  max-height: min(24rem, 60vh);
+  overflow: auto;
+  padding: .35rem;
+  border: 1px solid var(--md-default-fg-color--lighter);
+  border-radius: .65rem;
+  background: var(--md-default-bg-color);
+  box-shadow: 0 .6rem 1.6rem rgba(0, 0, 0, .28);
+  text-align: left;
+}
+.gi-search__results[hidden] {
+  display: none;
+}
+html.gi-searching .md-search__input {
+  color: transparent;
+}
+html.gi-searching .md-search__options {
+  visibility: hidden;
+}
+.md-typeset .gi-search__results ul,
+.md-typeset .gi-search__results p {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.md-typeset .gi-search__results li {
+  margin: 0;
+}
+.md-typeset .gi-search__results a {
+  display: block;
+  padding: .7rem .8rem;
+  border-radius: .4rem;
+  color: var(--md-default-fg-color);
+  font-size: .85rem;
+  line-height: 1.4;
+}
+.md-typeset .gi-search__results a span,
+.md-typeset .gi-search__results p {
   color: var(--md-default-fg-color--light);
+  font-size: .75rem;
+}
+.md-typeset .gi-search__results a span {
+  display: block;
+  margin-top: .2rem;
+}
+.md-typeset .gi-search__results strong {
+  font-weight: 600;
+}
+.gi-search__results a:hover,
+.gi-search__results a:focus {
+  background: var(--md-default-fg-color--lightest);
+  outline: 0;
 }
 .gi-hero__actions {
   display: flex;
@@ -156,7 +228,7 @@
 }
 @media (max-width: 36rem) {
   .gi-home { padding: 0 0 2rem; }
-  .gi-search__example { display: none; }
+  .gi-search kbd { display: none; }
   .gi-hero__description { font-size: .95rem; }
   .gi-usecases { grid-template-columns: repeat(2, 1fr); gap: .5rem; }
 }

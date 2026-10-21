@@ -6,11 +6,12 @@
     <p class="gi-hero__eyebrow">Karate for Go</p>
     <h1 id="gi-title">One syntax.<br><span>Test your whole stack.</span></h1>
     <p class="gi-hero__description">API tests, browser automation, load tests and mocks.<br>One native binary. No JVM.</p>
-    <button class="gi-search" type="button" data-gi-search>
+    <form class="gi-search" role="search" data-gi-search>
       <span class="gi-search__icon" aria-hidden="true">{% include ".icons/material/magnify.svg" %}</span>
-      <span>Search the docs <span class="gi-search__example">— try “JSON assertions”</span></span>
+      <input type="search" placeholder="Search the docs" aria-label="Search the docs" autocomplete="off" spellcheck="false">
       <kbd>/</kbd>
-    </button>
+      <div class="gi-search__results" hidden></div>
+    </form>
     <div class="gi-hero__actions">
       <a class="md-button md-button--primary" href="{{ 'quickstart/' | url }}">Quick start</a>
       <a class="md-button" href="{{ 'language/' | url }}">Read the docs</a>

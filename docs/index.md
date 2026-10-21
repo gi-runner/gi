@@ -3,6 +3,8 @@ template: home.html
 hide:
   - navigation
   - toc
+search:
+  exclude: true
 ---
 
 ## Start here

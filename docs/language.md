@@ -131,7 +131,7 @@ Use either `gi` or `karate` for these helpers:
 | `scenario` | Current scenario `name` and `line`. |
 | `feature` | Current feature `name`, `fileName` and `parentDir`. |
 | `write(value, path)` | Writes text, bytes, XML or JSON beneath the project `target/` directory and returns the full path. Absolute paths and `..` escapes are rejected. |
-| `waitForHttp(url, options)` | Polls GET until status 200–399. Options: `timeout` (default 30000 ms) and `interval` (default 250 ms). |
+| `waitForHttp(url, options)` | Polls GET until status 200-399. Options: `timeout` (default 30000 ms) and `interval` (default 250 ms). |
 | `waitForPort(host, port, timeout, interval)` | Waits for a TCP connection; timeout and interval default to 30000 and 250 ms. |
 | `signal(value)` | Queues a value for `listen` in this run. |
 | `listen(milliseconds)` | Returns the next queued value, or fails when the timeout elapses. |
