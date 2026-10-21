@@ -52,6 +52,7 @@ nav:
       - Quick start: quickstart.md
   - Write tests:
       - Language: language.md
+      - JavaScript helpers: helpers.md
       - HTTP requests: http.md
       - Assertions: match.md
       - Data-driven tests: data.md

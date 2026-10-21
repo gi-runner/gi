@@ -1,10 +1,14 @@
 # CI and automation
 
-Run a tagged suite, save reports, and let gi's exit status fail the job. Install gi as one native binary. Your API, brokers and Chrome must be available for tests that use them.
+Run your feature files in CI and keep the reports even when a test fails. The example below needs a reachable API; the workflow does not start it.
 
 ## GitHub Actions
 
-This example tests an API at the repository variable `API_BASE_URL`. Commit your tests under `features/` and tag the scenarios to run with `@smoke`.
+Before adding the workflow:
+
+1. Commit your tests under `features/`. Add `@smoke` on the line above each scenario to include.
+2. Set the repository Actions variable `API_BASE_URL` to your API address.
+3. Save this as `.github/workflows/api-tests.yml`:
 
 ```yaml
 name: API tests

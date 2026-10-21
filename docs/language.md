@@ -1,74 +1,85 @@
-# Language
+# Feature files and variables
 
-A file is standard Gherkin. `Feature`, `Background`, `Scenario`, `Scenario Outline`, and `Examples` work as they do in Cucumber. The step keyword (`*`, `Given`, `When`, `Then`, `And`, `But`) is ignored. The first word of the step text is the command.
+A `.feature` file contains named tests. gi reads each test's steps from top to bottom. You can write API requests, assertions, and JavaScript expressions in the same file; no Java or Go test code is required.
+
+## Read a feature file
+
+Save this as `basics.feature` and run `gi test basics.feature`. It needs no server.
 
 ```gherkin
-Feature: users
-  Background:
-    * url baseUrl
-    * def email = 'ada-' + uuid() + '@example.com'
+Feature: User data
 
-  Scenario: create
-    * path 'users'
-    * request { name: 'Ada', email: '#(email)' }
-    * method post
-    * status 201
-    * match response.email == email
+Background:
+  * def minimumAge = 18
+
+Scenario: check a user
+  * def user = { name: 'Ada', age: 36 }
+  * match user.name == 'Ada'
+  * assert user.age >= minimumAge
 ```
 
-`Background` is copied in front of every scenario. A docstring belongs to the step above it.
+The scenario passes. Here's what each part means:
 
-## Variables
+| Part | Meaning |
+| --- | --- |
+| `Feature:` | Names the file's group of tests. |
+| `Scenario:` | Names one test. |
+| `Background:` | Steps to run before each scenario. |
+| `*` | Starts a step. `Given`, `When`, `Then`, `And` and `But` can be used instead. |
+| `def` | Creates a variable. |
+| `match` | Compares values; see [assertions](match.md). |
+| `assert` | Requires a JavaScript expression to be `true`. |
 
-Expressions run in [Sobek](https://github.com/grafana/sobek), a pure-Go JavaScript runtime. `uuid()`, string concatenation, and object literals are JavaScript. Paths such as `response.users[*].id` are evaluated by gi, because that syntax is not JavaScript.
+These headings come from Gherkin, the text format also used by Cucumber. You do not need to know Cucumber to use gi.
 
-`true`, `false`, and `null` are literals. They are not variable names.
+## Variables and expressions
+
+Use JavaScript literals and expressions after `=`. Variables are available to later steps in the scenario.
+
+```gherkin
+* def name = 'Ada'
+* def user = { name: name, age: 36 }
+* def names = ['Ada', 'Grace']
+* def greeting = 'Hello, ' + user.name
+* match greeting == 'Hello, Ada'
+```
+
+Each scenario starts with its own variables. Use [configuration](suite.md#config) for values needed by many scenarios, such as `baseUrl`. [Feature calls](suite.md#call) let you share a flow.
+
+`response.users[*].id` selects every user's ID. That is a gi path expression, not JavaScript; see [Data](data.md). Load tests also provide `vu` and `iter` for [unique test data](load.md#unique-test-data).
+
+## Multiline values
+
+Three double quotes enclose a multiline value, called a docstring. It belongs to the step above it. `text` keeps it as text; `json`, `yaml`, `csv` and `xml` parse it.
+
+```gherkin
+* json user =
+  """
+  { "name": "Ada", "age": 36 }
+  """
+* match user.age == 36
+```
+
+Inside a structured value, `'#(expression)'` inserts the expression's value. For example:
+
+```gherkin
+* def name = 'Ada'
+* def user = { name: '#(name)' }
+* match user.name == 'Ada'
+```
+
+## Common steps
 
 | Step | Result |
 | --- | --- |
-| `def name = expression` | Evaluates the right-hand side. |
-| `text name = raw` | Stores the text. A docstring is kept as written. An inline value is trimmed. Nothing is evaluated. |
-| `json name = expression` | Evaluates, then parses a string as JSON. |
-| `copy name = expression` | Deep copy. |
-| `set path = expression` | Writes into an existing object or list. |
-| `remove path` | Deletes a key or index. |
-| `replace name.token = value` | Replaces `<token>` inside the string variable `name`. A following table with `token` and `value` columns replaces many. |
-| `table name` | Builds a list of objects from the following table. The first row is the header. |
-| `print expression` | Writes to stdout and records the line on the step. |
-| `assert expression` | Fails unless the expression is boolean `true`. |
-
-`#(name)` inside a JSON or JavaScript literal is replaced with the variable before the expression runs.
-
-Each scenario has its own runtime. An assigned `call` and `gi.setup()` run in a further realm; see [Suite](suite.md). `vu` and `iter` are `1` in a functional run. Under a user load profile, `vu` is the virtual user and `iter` counts its loops, starting at 1. Under a rate profile, `vu` numbers each start and `iter` stays 1.
-
-## gi and karate
-
-`karate` and `gi` refer to the same helper object. The global `read` is also available.
-
-| Member | Behavior |
-| --- | --- |
-| `gi.config` | Detached snapshot of effective `timeout`, `readTimeout`, `connectTimeout`, `followRedirects` and `strictResponseParsing` settings. Callback configuration and other Java settings are not included. |
-| `gi.env` | The value of `--env`. |
-| `gi.read(path)` | Same as the global `read`. |
-| `gi.get(name)` / `gi.set(name, value)` | Read or write a variable. `gi.set` is visible to later steps, including `match`. |
-| `gi.configure(key, value)` | Same keys as the `configure` step. |
-| `gi.callSingle(path)` | Runs a feature once per suite. See [Suite](suite.md). |
-| `gi.setup()` / `gi.setupOnce()` | Runs the `@setup` scenario. See [Suite](suite.md). |
-| `gi.map(list, fn)` | Returns a new list. `fn` receives each element. |
-| `gi.filter(list, fn)` | Keeps elements for which `fn` is truthy. |
-| `gi.merge(a, b, ...)` | Shallow-merges objects. Later keys replace earlier values, including nested objects. |
-| `gi.append(list, ...items)` | Returns a new list, flattening list arguments by one level. |
-| `gi.channel(kind, spec)` | Opens a WebSocket, gRPC, or Kafka link. See [Protocols](protocols.md). |
-| `gi.pageText(selector)` | Text of an element in the open browser page. |
-
-```gherkin
-* def names = gi.map(users, function(x){ return x.name })
-* def adults = gi.filter(users, function(x){ return x.age > 18 })
-* def body = gi.merge(defaults, { name: 'Ada' })
-* def ids = gi.append(ids, response.id)
-```
-
-`map` and `filter` do not mutate the input list.
+| `copy saved = user` | Deep copy a value before changing it. |
+| `set user.name = 'Grace'` | Update an object field or list item. |
+| `remove user.nickname` | Delete a field or list item. |
+| `table users` | Build a list from the following table's column names and rows. |
+| `replace message.name = 'Ada'` | Replace `<name>` in the text variable `message`. A token/value table can replace several placeholders. |
+| `print user` | Print a value and record it on the report step. |
+| `eval user.age++` | Execute JavaScript. Bare JavaScript statements work too. |
+| `string value = expression` / `bytes value = expression` | Convert a value to text or bytes. |
 
 ## read
 
@@ -82,65 +93,33 @@ Each scenario has its own runtime. An assigned `call` and `gi.setup()` run in a 
 | `/a/b.json` | From the project root. |
 | `b.json` | The feature's directory, then the project root. |
 
-The project root is the directory found by walking upward from the first feature path until `gi-config.js`, `karate-config.js`, or a base config exists, or the feature's directory when no config file exists.
+To find the project root, gi searches the first feature's directory and then its parents for `gi-config.js` or `gi-base.js` (the `karate-` names also work). Without a config file, it is that feature's directory.
 
 | Extension | Return value |
 | --- | --- |
-| `.json` | Parsed JSON. Whole numbers are integers, so `36` matches `36`. |
+| `.json` | Parsed JSON. |
 | `.js` | The value of `fn` when the file declares `function fn`. Otherwise the completion value of the script. |
 | `.feature` | A feature reference that can be assigned and used by `call`. |
 | `.yaml` / `.yml` | Parsed YAML. |
 | `.csv` | A list of objects with string cells. |
-| `.xml` | The native XML document described in [Data](data.md). |
+| `.xml` | An XML document; see [Data](data.md#xml). |
 | `.png`, `.jpg`, `.jpeg`, `.gif`, `.pdf`, `.zip`, `.bin`, `.gz` | Bytes. |
 | anything else | The file text. |
 
 ## configure
 
+Settings apply to the current scenario:
+
 ```gherkin
 * configure timeout = 5000
 * configure followRedirects = false
-* configure continueOnStepFailure = true
 * configure retry = { count: 5, interval: 200 }
-* configure headers = function(){ return { Authorization: 'Bearer ' + token } }
-* configure auth = { type: 'bearer', token: token }
 ```
 
-`timeout` is milliseconds and applies to each HTTP attempt. `retry.interval` is milliseconds. Header and hook functions stay on the scenario runtime. The other keys are values. See [HTTP](http.md) for auth and retry, and [Suite](suite.md) for hooks.
+`timeout` and `retry.interval` are milliseconds. For authentication, headers and retry conditions, see [HTTP](http.md). To keep executing steps after a failure, use `configure continueOnStepFailure = true`.
 
-`eval expression` and bare JavaScript statement steps execute in the scenario runtime. `string` and `bytes` convert values. `set` also accepts a table of paths and values.
+## JavaScript helpers
 
-Collection helpers include `appendTo`, `forEach`, `repeat`, `range`, `distinct`, `sort`, `filterKeys`, `mapWithKey`, `keysOf`, `valuesOf`, and `sizeOf`. Conversion helpers include `typeOf`, `lowerCase`, `pretty`, `toString`, `fromJson`, `fromString`, `toJson`, `toBytes`, `readAsString`, and `readAsBytes`. 
+Use `gi` for helpers such as `gi.read`, `gi.map` and `gi.setupOnce`. `karate` is an alias for the same object, so existing `karate.*` calls work too. The global `read()` is shorthand for `gi.read()`.
 
-## Native path helpers
-
-`karate.jsonPath(data, path)` supports recursive descent, filters, slices and unions within the native parser's grammar. `karate.xmlPath(document, xpath)` evaluates namespace-aware XPath. `karate.fromString(text)` recognizes JSON and XML, otherwise returning text. `karate.toJson(document)` returns the XML object view. XML mutation uses DSL XPath set/remove; JavaScript XML views are read-only.
-
-## Runtime helpers
-
-For cross-scenario events, see [signal and listen](suite.md#signal-and-listen). For report attachments, see [Reports](reports.md#attachments).
-
-Use either `gi` or `karate` for these helpers:
-
-| Helper | Behavior |
-| --- | --- |
-| `abort()` | Stops the remaining scenario steps without failing it. |
-| `log(...values)` | Writes values to configured output; suppressed under load and `@report=false`. |
-| `pause(milliseconds)` | Waits, respecting run cancellation. |
-| `info` | Scenario name and feature directory/file name; `scenarioDescription` is currently empty. |
-| `scenario` | Current scenario `name` and `line`. |
-| `feature` | Current feature `name`, `fileName` and `parentDir`. |
-| `write(value, path)` | Writes text, bytes, XML or JSON beneath the project `target/` directory and returns the full path. Absolute paths and `..` escapes are rejected. |
-| `waitForHttp(url, options)` | Polls GET until status 200-399. Options: `timeout` (default 30000 ms) and `interval` (default 250 ms). |
-| `waitForPort(host, port, timeout, interval)` | Waits for a TCP connection; timeout and interval default to 30000 and 250 ms. |
-| `signal(value)` | Queues a value for `listen` in this run. |
-| `listen(milliseconds)` | Returns the next queued value, or fails when the timeout elapses. |
-| `embed(value, mime, name)` | Attaches text, JSON, or bytes to the current step in the report. |
-
-```gherkin
-* karate.log('Running', karate.info.scenarioName)
-* karate.waitForHttp(baseUrl + '/health', { timeout: 5000, interval: 100 })
-* def saved = karate.write({ status: 'ready' }, 'status.json')
-```
-
-For Go functions exposed to scenarios, see [Embedding](embedding.md).
+See the [helper reference](helpers.md) for collections, conversion, file output, polling and runtime information. To expose a Go function, see [Embedding](embedding.md#register-a-helper).

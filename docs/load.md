@@ -1,4 +1,4 @@
-# Load
+# Load testing
 
 `gi load` runs the same scenarios as `gi test`. A scenario tagged `@noload` is skipped. `@ignore` is skipped in both modes.
 
@@ -19,7 +19,10 @@ Exit status `0` means the run and thresholds passed. A failed assertion or thres
 
 ## Choose a profile
 
-The profile is either a population of virtual users or a start rate. Users are a closed loop: a user finishes an iteration, then starts the next, so concurrency stays on the profile. A start rate is an open loop: the next scenario starts when it is due, whether or not earlier ones have finished. In-flight work is then an outcome, not the control.
+Choose what you want to control:
+
+- **Users (`--vus`):** each virtual user finishes a scenario, then starts it again. A slower service reduces throughput. This is a closed-loop test.
+- **Starts per second (`--rate`):** gi schedules scenarios at that rate even when earlier ones are still running. A slower service increases concurrent work. This is an open-loop test.
 
 | Profile | What is controlled | Comment |
 | --- | --- | --- |
@@ -36,35 +39,48 @@ A user profile and a rate profile cannot be combined. Flags override the comment
 # gi-load: threshold errorRate < 1%
 ```
 
-```bash
-gi load examples/users.feature \
-  --var baseUrl=http://127.0.0.1:18080 \
-  --vus 20 --duration 10s --warmup 2s \
-  --threshold 'p95 < 200ms'
+For example, ramp the quick-start test from 1 to 20 users:
 
-gi load examples/users.feature --var baseUrl=http://127.0.0.1:18080 --rate 50 --duration 30s
-gi load examples/users.feature --var baseUrl=http://127.0.0.1:18080 --vus 1 --vus-to 40 --duration 30s
-gi load examples/users.feature --var baseUrl=http://127.0.0.1:18080 --rate 10 --rate-to 200 --duration 30s
-gi load examples/users.feature --var baseUrl=http://127.0.0.1:18080 \
-  --stage 'users=1:40 duration=30s' \
-  --stage 'users=40 duration=1m' \
-  --stage 'spike users=200 duration=10s' \
-  --stage 'users=40 duration=30s'
+```bash
+gi load hello.feature --var baseUrl=http://127.0.0.1:18081 \
+  --vus 1 --vus-to 20 --duration 30s
 ```
 
-With no comment and no flag, the run is 10 virtual users for 10 seconds. `--rps` caps HTTP calls. Leave it unset and each call is sent when the scenario reaches it. Spare capacity under the cap is not saved, so `--rps` is a ceiling, not a promised rate. `--rate` is the promised start rate.
+### Stages
 
-`--stage` repeats. A stage is `users=10`, `users=1:40`, `rate=50`, or `rate=10:200`, each with `duration`. `spike users=200` or `spike rate=500` jumps to that level for the stage, then returns to the level before it. The next stage is the recovery. Stages are all users or all rates. They replace `--vus`, `--rate`, and `--duration`.
+Use several stages to ramp, hold, then reduce the load:
+
+```bash
+gi load hello.feature --var baseUrl=http://127.0.0.1:18081 \
+  --stage 'users=1:20 duration=10s' \
+  --stage 'users=20 duration=30s' \
+  --stage 'users=20:1 duration=10s'
+```
+
+With no comment and no flag, the run is 10 virtual users for 10 seconds. `--rps` caps HTTP calls. Leave it unset and each call is sent when the scenario reaches it. Spare capacity under the cap is not saved, so `--rps` is a ceiling, not a promised rate. `--rate` is the target scenario start rate; capacity limits can cause missed starts.
+
+Repeat `--stage` for each segment. Use `users=10` or `rate=50` to hold a level; `users=1:40` or `rate=10:200` ramps it. `spike users=200` jumps for that stage, then returns to the previous level. Every stage needs a duration, and all stages must use users or all must use rates. Stages replace the simple user/rate/duration flags.
 
 `--warmup` holds the opening level and discards those samples. The stages are the measured window.
 
-`--max-inflight` caps an open loop. A start that would pass the cap is not run. It counts as a missed start and a failed iteration. `iterations` is completed iterations plus missed starts. A start that was accepted but does not begin before the window ends, and an iteration still in flight when the window ends, are neither completed nor missed. A start that begins more than 20ms after it was due counts as late. A miss is not also late.
+## Read the summary
 
-`schedP95` is the time from the scheduled start until the HTTP response is recorded. It includes schedule lag and scenario work before that call. `p95` is only the HTTP call. They are different intervals.
+| Metric | Meaning |
+| --- | --- |
+| Iterations | Completed scenario iterations plus missed starts. One scenario can make several HTTP requests. |
+| Requests / rps | HTTP calls completed and their measured rate. |
+| p95 | 95% of measured HTTP calls completed within approximately this time. |
+| Scheduled p95 | Time from a start being due until its HTTP response; includes starting late and earlier scenario work. |
+| Missed | Starts skipped because the `--max-inflight` cap was reached. |
+| Late | Accepted starts that began more than 20 ms after they were due. |
 
-The summary reports the runner's CPU time (user plus system), the process maximum resident set when the OS provides it, and the peak number of goroutines observed during the run. When resident set is unavailable, the memory figure is the sampled peak of live heap objects.
+`--max-inflight` limits concurrent scenarios in a rate test. A missed start counts as a failed iteration. A late start is not automatically a failure; add a `late` threshold if lateness should fail the run.
 
-Under a user profile, `vu` is that user and `iter` counts its loops, both starting at 1. If a stage removes and later restarts a user, its iteration count continues. Under a rate profile, each start gets the next `vu` and `iter` stays 1. A user run reports the larger end of the population. A rate run reports the peak number of scenarios in flight.
+??? note "Window boundaries and runner resources"
+
+    Work still in flight at the window boundary is cancelled. It is not counted as a completed iteration or missed start; an assertion failure recorded earlier in that iteration remains a failure. A start accepted but not begun before the window ends is also excluded. Missed and late starts are separate counts.
+
+    The runner reports user plus system CPU time, peak goroutines, and process maximum resident memory when the OS provides it. Otherwise the memory figure is sampled peak live heap usage.
 
 ## What counts as an error
 
@@ -76,9 +92,11 @@ Login once in `@setup`, then read it with `gi.setupOnce()`. A login inside the s
 
 Each HTTP call is stored under a path template. UUIDs and numeric segments collapse to `{id}`, so `GET /users/550e8400-e29b-41d4-a716-446655440000` becomes `GET /users/{id}`.
 
-By default, a run keeps 1,000 named endpoints. Set `--max-endpoints 2000` or `# gi-load: maxEndpoints=2000` to change the limit. Further paths aggregate under `[other endpoints]`; counts, errors, and overall latency still include every request. The CLI, HTML, and JSON reports show how many requests were aggregated. Histograms are shared across users, so increasing virtual users does not duplicate endpoint histograms.
+By default, a run keeps 1,000 named endpoints. Set `--max-endpoints 2000` or `# gi-load: maxEndpoints=2000` to change the limit. Further paths aggregate under `[other endpoints]`; counts, errors, and overall latency still include every request. Reports show the number of requests aggregated.
 
-The summary reports count, throughput, min, mean, p50, p95, and p99. Percentiles come from a fixed histogram with 32 buckets per power of two, so a long run stays bounded. The bucket upper bound is at most 3.125% above the nearest-rank value (exact below 32 ns). A percentile is the upper edge of its bucket, capped by the slowest sample, which makes a latency threshold fail closed. An in-flight operation cancelled at the window boundary does not create a failed iteration. An assertion failure completed earlier in that same iteration remains a failure.
+### Thresholds
+
+A threshold is a pass condition, such as `--threshold 'p95 < 200ms'`. All configured thresholds must pass.
 
 | Threshold | Compares |
 | --- | --- |
@@ -90,7 +108,15 @@ The summary reports count, throughput, min, mean, p50, p95, and p99. Percentiles
 
 Operators are `<`, `>`, `<=`, and `>=`. A failed threshold fails the run. Thresholds reject negative and non-finite values. JUnit records failed iterations even when all configured thresholds pass.
 
-`vu` and `iter` are set, so a scenario can build unique data:
+??? note "Percentile precision"
+
+    Percentiles use a bounded histogram with 32 buckets per power of two. The reported upper edge is at most 3.125% above the nearest-rank value (exact below 32 ns), capped by the slowest sample. This makes latency thresholds fail closed.
+
+## Unique test data
+
+`vu` identifies the virtual user and `iter` counts its iterations, both starting at 1. A restarted user keeps its iteration count. In rate tests, each start gets a new `vu` and `iter` stays 1. Both values are 1 in a functional test.
+
+Use them to create distinct test data:
 
 ```gherkin
 * def email = 'user-' + vu + '-' + iter + '@example.com'

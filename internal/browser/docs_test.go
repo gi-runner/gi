@@ -1,7 +1,6 @@
 package browser
 
 import (
-	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
@@ -9,6 +8,7 @@ import (
 
 	"github.com/gi-runner/gi/internal/engine"
 	"github.com/gi-runner/gi/internal/feature"
+	"github.com/gi-runner/gi/internal/mock"
 	"github.com/gi-runner/gi/internal/testutil"
 )
 
@@ -21,7 +21,7 @@ func TestDocumentedBrowserExample(t *testing.T) {
 	if !ok {
 		t.Fatal("browser documentation has no Gherkin example")
 	}
-	source, _, ok := strings.Cut(block, "```")
+	source, rest, ok := strings.Cut(block, "```")
 	if !ok {
 		t.Fatal("unclosed browser example")
 	}
@@ -29,10 +29,19 @@ func TestDocumentedBrowserExample(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		_, _ = w.Write([]byte(`<!doctype html><input id="name"><button id="go" onclick="document.getElementById('out').textContent=document.getElementById('name').value">Greet</button><div id="out"></div>`))
-	}))
+	_, pageBlock, ok := strings.Cut(rest, "```gherkin\n")
+	if !ok {
+		t.Fatal("browser docs have no example page")
+	}
+	pageSource, _, ok := strings.Cut(pageBlock, "```")
+	if !ok {
+		t.Fatal("unclosed browser mock example")
+	}
+	page, err := feature.Parse(filepath.Join(filepath.Dir(f.Path), "greeting.mock.feature"), pageSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(mock.Handler(page))
 	defer server.Close()
 	result, err := engine.RunFile(t.Context(), f, engine.Options{NewPage: Open, Vars: map[string]any{"pageUrl": server.URL}})
 	if err != nil || !result.Passed() {

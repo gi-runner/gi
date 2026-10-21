@@ -1,10 +1,10 @@
-# Embedding
+# Run gi from Go
 
 Import `github.com/gi-runner/gi` and call `Run` with explicit feature paths. The API uses the same runner and native adapters as the CLI. `Register` adds a Go function to the `gi` object for later runs; `Unregister` removes it.
 
 ## Try it
 
-In a Go module, add the dependency with `go get github.com/gi-runner/gi`. Copy `hello.feature` from the [quick start](quickstart.md), keep its mock running, and save this as `hello_test.go`:
+In a new directory, run `go mod init example.com/api-tests` first. In your Go module, add the dependency with `go get github.com/gi-runner/gi`. Copy `hello.feature` from the [quick start](quickstart.md), keep its mock running, and save this as `hello_test.go`:
 
 ```go
 package apitest
@@ -49,7 +49,7 @@ Run `go test -v`. `TestHello` passes when the mock returns the expected greeting
 
 Paths are files. Configuration is read from the first path. Packages under `internal` are not an extension API.
 
-`ssl`, `proxy`, and `connectTimeout` apply when the client's transport is an `*http.Transport`. gi clones it and keeps the connection pool. An assigned call and `setup` run in a new JavaScript realm seeded from the caller. The caller's bindings and built-ins stay as they were. A function returned from the call keeps the callee realm. A function from the caller remains callable and stops if that call's deadline fires.
+`ssl`, `proxy` and `connectTimeout` require a client using `*http.Transport`. gi clones the transport settings and reuses connections. For scope and cancellation rules when calling features, see [Reuse and configuration](suite.md#call).
 
 ## Register a helper
 

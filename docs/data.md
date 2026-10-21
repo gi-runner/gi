@@ -1,6 +1,21 @@
-# Data
+# Data-driven tests and files
 
-`json`, `yaml`, `csv`, and `xml` turn text into values you can `match`. A docstring is the document. An inline right-hand side is evaluated first, and a string result is then parsed.
+Use a [Scenario Outline](#scenario-outline) to repeat a test with different inputs. Use `read()` to load a fixture, or `json`, `yaml`, `csv` and `xml` to parse data written inside a feature.
+
+## Read a fixture
+
+Save `{ "name": "Ada", "age": 36 }` as `user.json` beside your feature. Inside a scenario:
+
+```gherkin
+* def user = read('user.json')
+* match user.name == 'Ada'
+```
+
+The file extension determines the format. Relative paths start at the feature directory; see [file paths](language.md#read).
+
+## Inline YAML and CSV
+
+Three double quotes enclose multiline data. The parser converts it to a value you can check with `match`:
 
 ```gherkin
 * yaml user =
@@ -18,7 +33,7 @@
 * match rows[0].age == '36'
 ```
 
-YAML numbers become integers when they are whole, so `36` matches `36`. CSV keeps every cell as a string, including numbers. A leading byte-order mark is stripped. Rows may differ in length.
+YAML preserves numbers. CSV cells are strings, so the example checks age against `'36'`. CSV accepts a leading byte-order mark and rows of different lengths.
 
 ## XML
 
@@ -50,8 +65,8 @@ The object view uses local names. XPath uses namespace prefixes from the documen
 * match user /user/name == 'Ada'
 * set user /user/name = 'Grace'
 * remove user /user/@id
-* def name = karate.xmlPath(user, '/user/name')
-* def names = karate.jsonPath({ users: [{ name: 'Ada' }] }, '$..name')
+* def name = gi.xmlPath(user, '/user/name')
+* def names = gi.jsonPath({ users: [{ name: 'Ada' }] }, '$..name')
 ```
 
 Use XPath set/remove for XML mutation. Scalar and native XML fragment replacement are supported. Simple missing element paths can be created. Path/value tables support scalar XML updates as shown below. Structured object/list insertion and arbitrary complex missing paths remain incomplete. JSONPath supports recursive descent, filters, slices and unions within the native parser's grammar.
@@ -93,7 +108,7 @@ The scenario name gains the row, for example `minimum age [age=17, expected=fals
 
 A one-column header that contains `(`, or a single-column Examples table with no body rows, is an expression. gi evaluates it when the file runs, after config is loaded. The expression must return a list of objects. Each object is a row, and its keys are the placeholders.
 
-No body row is needed for the expression form. A legacy dummy body row is accepted and ignored.
+Do not add data rows under the expression; its returned list supplies them. Older features with a dummy row are still accepted.
 
 ```gherkin
 @setup
@@ -107,7 +122,7 @@ Scenario Outline: hello <name>
     | gi.setup().data |
 ```
 
-`gi.setupOnce().data` is the same list, computed once per suite. The expression can be any JavaScript that returns the list, including `read('rows.json')`.
+`gi.setupOnce().data` computes the setup data once for the run. The expression can be any JavaScript that returns the list, including `read('rows.json')`.
 
 An outline with a dynamic header produces no scenarios when the list is empty.
 

@@ -1,6 +1,6 @@
-# Suite
+# Reuse and configuration
 
-`gi test` with no path walks `features/`, then `examples/`, then the current directory. A directory argument walks every `.feature` file under it, skipping hidden directories and `vendor/`. One HTML report covers the whole run.
+Call another feature to reuse a flow, load shared settings from config, and use tags to choose what runs. Start with this two-file example; then add the options your suite needs.
 
 ## Try a reusable feature
 
@@ -25,9 +25,25 @@ Scenario: call a helper
 
 Run `gi test reuse.feature`. The caller passes, and `result.message` contains the helper's result. Passing the caller path explicitly avoids also running the helper as an independent test.
 
+## Organize a project
+
+A small suite can use this layout:
+
+```text
+gi-config.js
+features/
+  users.feature
+  common/
+    login.feature
+mocks/
+  users.mock.feature
+```
+
+Run `gi test features/`. Keep mock files outside that test directory. Tag called-only helpers such as `login.feature` with `@ignore`; a `call` can still run them. This prevents directory discovery from running helpers as independent tests.
+
 ## Parallel
 
-`--jobs` is how many features run at the same time. The default is one per CPU. Results stay in the order of the files, and the report is that order.
+`--jobs` controls how much work runs concurrently. It defaults to the available CPU count. The table below explains whether gi schedules features or individual scenarios. Report order follows file order.
 
 | Invocation | What runs at once |
 | --- | --- |
@@ -56,7 +72,7 @@ A signal sent before `listen` stays queued. Each listen consumes one value and f
 
 ## Config
 
-gi looks upward from the first feature path for three files, and evaluates them in this order on a fresh runtime for every scenario:
+gi looks upward from the first feature path for three files, and evaluates them in this order separately for every scenario:
 
 1. `gi-base.js`
 2. `gi-config.js`
@@ -66,28 +82,23 @@ Each filename falls back to the corresponding `karate-` filename. If both exist,
 
 Each file returns an object, or a function that returns an object. The keys become variables. `--var key=value` is applied after config, so the flag wins. `--env` also sets `gi.env`.
 
+Save this as `gi-config.js` beside your features:
+
 ```javascript
 function fn() {
-  var token = gi.callSingle('auth.feature').token
-  return { baseUrl: 'http://127.0.0.1:18080', token: token }
+  return { baseUrl: 'http://127.0.0.1:18081' }
 }
 ```
 
 ## Call a feature {#call}
 
-```gherkin
-* call read('login.feature')
-* def session = call read('login.feature') { user: 'ada' }
-* callonce read('login.feature')
-```
-
 | Form | Scope | Result |
 | --- | --- | --- |
 | `call read('login.feature')` | Shares caller variables and HTTP settings. | Variables are available to later steps. |
-| `def result = call read('login.feature')` | Separate JavaScript realm. | Read returned variables from `result`. |
-| `gi.call(path, arg)` | Separate realm; `gi.call(true, path, arg)` shares the caller. | Returns the called feature's variables. |
+| `def result = call read('login.feature')` | Own JavaScript variables and built-ins. | Read returned variables from `result`. |
+| `gi.call(path, arg)` | Own scope; `gi.call(true, path, arg)` shares the caller. | Returns the called feature's variables. |
 
-Assigned calls and setup isolate declarations and changes to built-ins. A returned function keeps the realm it closed over. Shared calls propagate persistent HTTP settings and cookie updates; isolated calls get a fork of the cookie jar. Transient request builders are cleared.
+Use an assigned call when you only need its result. It keeps changes to variables, built-ins and cookies out of the caller. A bare call deliberately shares variables, persistent HTTP settings and cookie changes. Neither form preserves a partly built request's path or body.
 
 ### Arguments and selection
 
@@ -109,15 +120,13 @@ Cached data is copied and may contain JSON or native XML. Cached functions, incl
 
 ??? note "Callback scope and cancellation"
 
-    A returned function sees its captured variables, sibling functions and later assignments. Its `let` and `var` bindings remain in the originating runtime. Invocation respects the caller's cancellation, and `gi.info` identifies that caller.
+    Functions keep the variables they closed over, including later assignments and sibling functions. Their `let` and `var` bindings stay in the original runtime. Invocation respects the caller's cancellation, and `gi.info` identifies that caller. A parent function invoked from an isolated call uses that call's deadline; afterward, the parent keeps its own deadline. Other scenarios can enter a callback's runtime while it waits in `listen`, `pause`, `waitForHttp` or `waitForPort`.
 
-    A parent function invoked from an isolated call still closes over the parent. It respects the isolated call's deadline; afterward, the parent keeps its own deadline. While a callback waits in `listen`, `pause`, `waitForHttp` or `waitForPort`, another scenario may call into that runtime.
+??? note "Call lifecycle details"
 
-### Configuration and lifecycle
+    Calls inherit configuration without re-running config files. Shared calls propagate header/hook settings and keep browser ownership. Assigned calls borrow the page without closing it. Cache hits replay cookie updates and retain the original callbacks.
 
-Calls inherit configuration without re-running config files. Shared calls propagate header and hook settings and retain browser ownership. Assigned calls borrow an existing browser page without closing it. Cache hits replay cookie updates and use the original header and hook functions.
-
-Calls nest to a depth of 8. Ordinary recursive calls fail; during configuration bootstrap, re-entering the same feature singleton returns an empty object. Hooks do not run inside called features.
+    Calls nest to a depth of 8. Ordinary recursive calls fail; during configuration bootstrap, re-entering the same feature singleton returns an empty object. Hooks do not run inside called features.
 
 The [HTML report](reports.md) nests called steps under the `call` step.
 
@@ -153,9 +162,10 @@ Scenario:
 
 Scenario: use it
   * def rows = gi.setupOnce().data
+  * match rows[0].name == 'Ada'
 ```
 
-`gi.setup()` runs the `@setup` scenario in its own realm and returns the variables that scenario defined. Lexical bindings and built-in changes made there stay in that realm. `gi.setupOnce()` does that once per suite. The setup scenario's own steps run. Its background does not. A hook does not run inside setup, so a hook may call `gi.setupOnce()`. Setup cannot call setup.
+`gi.setup()` runs the `@setup` scenario and returns its variables. `gi.setupOnce()` caches that result for the run. Setup has its own JavaScript scope; its changes do not leak into other scenarios. It skips `Background` and hooks. Setup cannot call setup, but a hook can call `gi.setupOnce()`.
 
 An unnamed `@setup` is the default. `gi.setup('name')` selects `@setup=name`.
 
@@ -165,8 +175,8 @@ Dynamic outlines call this themselves: `Examples: | gi.setup().data |`. See [Dat
 
 ```javascript
 function fn() {
-  karate.configure('beforeScenario', function() { karate.set('started', true) })
-  karate.configure('afterScenario', function() { karate.set('finished', true) })
+  gi.configure('beforeScenario', function() { gi.set('started', true) })
+  gi.configure('afterScenario', function() { gi.set('finished', true) })
   return {}
 }
 ```

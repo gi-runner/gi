@@ -1,6 +1,8 @@
 # Your first test
 
-Start a local API, test its response, then run the same test under load.
+Start a local mock API, test its response, then run the same test under load. You need Go 1.27.2 or newer and two terminals; no API deployment or Chrome is needed.
+
+Create an empty directory for the two files below. Keep both terminals in that directory.
 
 ## Install
 
@@ -57,8 +59,7 @@ Open `report.html` to inspect the steps and HTTP exchange. Change the expected m
 ## Run under load
 
 ```bash
-gi load hello.feature --var baseUrl=http://127.0.0.1:18081 \
-  --vus 10 --duration 10s --report load.html
+gi load hello.feature --var baseUrl=http://127.0.0.1:18081 --vus 10 --duration 10s --report load.html
 ```
 
 The assertions stay the same. The load report adds throughput, latency percentiles and errors. Stop the mock with Ctrl+C when finished.

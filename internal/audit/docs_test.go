@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
+	"github.com/gi-runner/gi/internal/adapters"
 	"github.com/gi-runner/gi/internal/engine"
 	"github.com/gi-runner/gi/internal/feature"
 	"github.com/gi-runner/gi/internal/httpx"
@@ -52,6 +54,23 @@ func TestDocumentationExamples(t *testing.T) {
 		_, _ = io.WriteString(w, `{"data":{"user":{"id":"42","name":"Ada"}}}`)
 	}))
 	defer graphql.Close()
+	echo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.CloseNow() }()
+		for {
+			kind, message, err := conn.Read(r.Context())
+			if err != nil {
+				return
+			}
+			if err := conn.Write(r.Context(), kind, message); err != nil {
+				return
+			}
+		}
+	}))
+	defer echo.Close()
 	for _, tc := range []struct {
 		name, source, url string
 		jobs, scenarios   int
@@ -64,6 +83,9 @@ func TestDocumentationExamples(t *testing.T) {
 		{"assertions", oneDocumentedFeature(t, filepath.Join(root, "docs", "match.md")), "", 1, 2},
 		{"data", oneDocumentedFeature(t, filepath.Join(root, "docs", "data.md")), "", 1, 3},
 		{"reuse", documentedFeature(t, filepath.Join(root, "docs", "suite.md"), "Reuse a flow"), "", 1, 1},
+		{"language", oneDocumentedFeature(t, filepath.Join(root, "docs", "language.md")), "", 1, 1},
+		{"helpers", oneDocumentedFeature(t, filepath.Join(root, "docs", "helpers.md")), "", 1, 1},
+		{"WebSocket", oneDocumentedFeature(t, filepath.Join(root, "docs", "protocols.md")), "", 1, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := featureOf(t, filepath.Join(t.TempDir(), "example.feature"), tc.source)
@@ -76,7 +98,7 @@ func TestDocumentationExamples(t *testing.T) {
 			sender := httpx.New(nil)
 			defer sender.CloseIdleConnections()
 			results, err := engine.RunFiles(t.Context(), []*feature.File{f}, engine.Options{
-				HTTP: sender, Vars: map[string]any{"baseUrl": tc.url}, Jobs: tc.jobs, Suite: suite.Open(f.Path, ""),
+				HTTP: sender, Vars: map[string]any{"baseUrl": tc.url, "wsUrl": "ws" + strings.TrimPrefix(echo.URL, "http")}, Jobs: tc.jobs, Suite: suite.Open(f.Path, ""), Dial: adapters.Dial,
 			}, nil)
 			if err != nil {
 				t.Fatal(err)

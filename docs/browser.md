@@ -1,6 +1,10 @@
 # Browser automation
 
-`driver` opens a URL in headless Chrome. Install Chrome on the machine running gi; it is not bundled. Actions accept CSS or XPath selectors; single-element locators also support text selectors. `gi.pageText` reads an element.
+Control Chrome with feature steps such as `driver`, `input` and `click`. Install Chrome on the runner; it is not bundled. Chrome runs headlessly, so no window opens during a normal test.
+
+## Try it
+
+Save as `greeting.feature`:
 
 ```gherkin
 Feature: Greeting form
@@ -14,19 +18,52 @@ Scenario: submit a name
   * match got == 'Ada'
 ```
 
-Save as `greeting.feature` and run it against a page with `#name`, `#go` and `#out` elements:
+The test expects a name field, a button and an output element. To try it without an application, save this as `greeting.mock.feature`:
 
-```bash
-gi test greeting.feature --var pageUrl=http://127.0.0.1:8080 --report browser.html
+```gherkin
+Feature: Greeting page
+
+Scenario: serve the form
+  * pathMatches '/'
+  * def responseHeaders = { 'Content-Type': 'text/html' }
+  * text response =
+    """
+    <!doctype html>
+    <input id="name" aria-label="Name">
+    <button id="go" onclick="document.getElementById('out').textContent = document.getElementById('name').value">Greet</button>
+    <p id="out"></p>
+    """
 ```
 
-The test enters `Ada`, clicks the button, waits for `#out` to contain `Ada`, and checks that its complete text is exactly `Ada`. A successful run exits `0`.
+Start the example page:
 
-`click` and `input` fail with `driver is not open` until `driver` has run. The page closes when the scenario ends. A machine without Chrome fails the `driver` step.
+```bash
+gi mock greeting.mock.feature --addr 127.0.0.1:18082
+```
+
+In another terminal:
+
+```bash
+gi test greeting.feature --var pageUrl=http://127.0.0.1:18082 --report browser.html
+```
+
+The test enters `Ada`, clicks Greet, waits for the output, and checks that it is exactly `Ada`. It exits `0` when all steps pass. To test your own application, replace `pageUrl` and the selectors. `#name`, for example, selects the element with `id="name"`.
+
+The browser closes at the end of the scenario. Actions fail with `driver is not open` until a `driver` step opens a URL.
 
 ## Actions and locators
 
-After opening `driver`, global helpers and driver methods support `click`, `input`, `inputFile`, `clear`, `select`, `focus`, `scroll`, `text`, `html`, `value`, `attribute`, `exists`, `enabled`, `locate`, `locateAll`, `waitFor`, `waitForText`, `waitForEnabled`, `waitForUrl`, string `waitUntil`, `script` and `screenshot`. Navigation includes back, forward and refresh; `driver.url` and `driver.title` are readable properties. Locators support CSS, XPath and single-element text selectors. Located elements expose fluent actions and read properties.
+| Task | Helpers |
+| --- | --- |
+| Change an element | `click`, `input`, `clear`, `select`, `focus`, `scroll` |
+| Read or inspect | `text`, `html`, `value`, `attribute`, `exists`, `enabled` |
+| Wait for a change | `waitFor`, `waitForText`, `waitForEnabled`, `waitForUrl`, `waitUntil` (a JavaScript string) |
+| Reuse a locator | `locate`, `locateAll`; elements expose actions and properties |
+| Upload or capture | `inputFile`, `screenshot` |
+| Navigate | `driver.back()`, `driver.forward()`, `driver.refresh()`; `driver.url`, `driver.title` |
+| Run page JavaScript | `script` |
+
+Actions accept CSS and XPath selectors. Single-element locators also support text selectors. Most helpers work globally, such as `click('#go')`, or on `driver`, such as `driver.click('#go')`.
 
 Screenshots return PNG bytes and are attached to the step that took them. Shared calls retain browser ownership; isolated calls borrow an existing page without closing it.
 

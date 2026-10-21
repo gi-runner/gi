@@ -104,6 +104,11 @@
   font: inherit;
   box-shadow: none;
 }
+.gi-search:focus-within {
+  border-color: var(--md-accent-fg-color);
+  outline: 2px solid var(--md-accent-fg-color);
+  outline-offset: 3px;
+}
 .gi-search input:focus {
   outline: 0;
 }
@@ -139,11 +144,9 @@
 .gi-search__results[hidden] {
   display: none;
 }
-html.gi-searching .md-search__input {
-  color: transparent;
-}
-html.gi-searching .md-search__options {
-  visibility: hidden;
+body:has(.gi-home) .md-header .md-search,
+body:has(.gi-home) .md-header__button[for=__search] {
+  display: none;
 }
 .md-typeset .gi-search__results ul,
 .md-typeset .gi-search__results p {

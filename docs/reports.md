@@ -1,5 +1,7 @@
 # Reports
 
+Use HTML to investigate a run, JUnit for CI test results, or JSON for another tool. Reports are written only when you request them.
+
 ## Try it
 
 With `hello.feature` and the mock from the [quick start](quickstart.md):
@@ -29,7 +31,11 @@ JUnit is a `testsuites` document. One `testsuite` per feature. Duration is secon
 
 JSON is the same structure as the HTML view. Durations are milliseconds. The timeline is included for a functional run.
 
-Cucumber JSON is one feature object per file. Step duration is nanoseconds. A passed step is `passed`. A failed step is `failed` and carries `error_message`. Expected failures accepted by `@fail` export as passed. Scenario failures without a failed step (including an unexpectedly passing `@fail`) export a failed `after` hook so consumers preserve the runner outcome.
+Cucumber JSON uses Cucumber's feature/step format. Choose it when another tool expects Cucumber results.
+
+??? note "Cucumber result mapping"
+
+    Cucumber JSON is one feature object per file. Step duration is nanoseconds. A passed step is `passed`. A failed step is `failed` and carries `error_message`. Expected failures accepted by `@fail` export as passed. Scenario failures without a failed step (including an unexpectedly passing `@fail`) export a failed `after` hook so consumers preserve the runner outcome.
 
 ## Attachments
 
@@ -38,11 +44,11 @@ Cucumber JSON is one feature object per file. Step duration is nanoseconds. A pa
 * gi.embed('payment accepted', 'text/plain', 'receipt')
 ```
 
-`gi.embed(value, mime, name)` and `screenshot()` add attachments to the step that produced them. The same applies to `beforeScenario`, `afterScenario`, `afterScenarioOutline`, `afterFeature`, and `onStepFailure`: the attachment stays on that hook step. Each attachment is limited to 4 MiB. HTML displays text and PNG, JPEG, GIF and WebP images inline. JSON stores the bytes as base64. Cucumber JSON stores them on the step as `embeddings`. Attachments from nested feature calls are included on the enclosing call step.
+`gi.embed(value, mime, name)` and `screenshot()` add attachments to the step that produced them. Attachments created by a hook stay on that hook's report step. Each attachment is limited to 4 MiB. HTML displays text and PNG, JPEG, GIF and WebP images inline. JSON stores the bytes as base64. Cucumber JSON stores them on the step as `embeddings`. Attachments from nested feature calls are included on the enclosing call step.
 
 ## OpenTelemetry
 
-`--otel-endpoint` posts an OTLP/HTTP JSON trace of the functional run. The collector must accept `application/json`. A failure to export is a warning. It does not fail the run. Load reports send the aggregated endpoint spans, not one span per request.
+`--otel-endpoint` sends traces to an OpenTelemetry collector using OTLP over HTTP with JSON. The collector must accept `application/json`. A failure to export is a warning. It does not fail the run. Load reports send the aggregated endpoint spans, not one span per request.
 
 ## Common mistakes
 

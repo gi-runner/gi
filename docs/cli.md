@@ -7,6 +7,8 @@ gi mock <file.feature> [flags]
 gi version
 ```
 
+`gi test` without a path searches `features/`, then `examples/`, then the current directory. It uses the first of those directories that exists. A directory argument includes `.feature` files below it, except hidden directories and `vendor/`. Pass a file to run only that file.
+
 Exit status is 0 when the run passed, 1 when a scenario, a threshold, or a file failed, and 2 when the command line is wrong.
 
 Use `gi <command> --help` for command options. Shell completion is available through

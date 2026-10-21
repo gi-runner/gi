@@ -1,6 +1,6 @@
 # Install
 
-Go 1.27.2 or newer.
+Install [Go](https://go.dev/dl/) 1.27.2 or newer, then run:
 
 ```bash
 go install github.com/gi-runner/gi/cmd/gi@latest
@@ -24,7 +24,7 @@ go build -o bin/gi ./cmd/gi
 ./bin/gi version
 ```
 
-The first run is the [quick start](quickstart.md).
+Once `gi version` works, follow the [quick start](quickstart.md). Multi-line shell examples use Bash; in PowerShell, join the lines and omit each trailing `\`.
 
 ## If installation fails
 

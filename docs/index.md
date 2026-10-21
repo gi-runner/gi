@@ -45,7 +45,7 @@ Install gi and run a working example against a local mock.
 
 Build requests, validate responses, and work with test data.
 
-[Language](language.md) · [HTTP, GraphQL and SOAP](http.md) · [Assertions](match.md) · [JSON, XML and data](data.md) · [Calls and configuration](suite.md)
+[Language](language.md) · [Helpers](helpers.md) · [HTTP, GraphQL and SOAP](http.md) · [Assertions](match.md) · [JSON, XML and data](data.md) · [Calls and configuration](suite.md)
 
 
 </section>

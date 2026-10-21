@@ -1,4 +1,4 @@
-# HTTP
+# HTTP requests
 
 A scenario builds one request at a time. `method` sends it and clears the path, query, body, form, and multipart parts. The URL, headers, cookies, and auth stay for the next request.
 
@@ -73,7 +73,7 @@ The multipart `Content-Type`, including the boundary, is set on the request. A `
 
 ## Auth
 
-`configure auth` sets one credential for the scenario. It is sent only when the request does not already have an `Authorization` header.
+`configure auth` sets credentials for the scenario. Choose one of these forms; each replaces the previous auth setting. An explicit `Authorization` header takes precedence.
 
 ```gherkin
 * configure auth = { type: 'basic', username: 'ada', password: 'secret' }
@@ -95,17 +95,32 @@ OAuth2 is the client-credentials grant. The first request of the scenario posts 
 
 ## Headers from config
 
-`configure headers` accepts an object or a function. The function runs before every request and its object is merged onto the request. A header set by the scenario is not removed. Auth fills `Authorization` only when that header is still empty, and it does so before the header overlay, so the function can replace the credential.
+`configure headers` accepts an object or a function. The function runs before every request and its object is merged onto the request. For the same header name, the configured value replaces the scenario value. Auth runs first, so the configured headers can replace `Authorization` too.
 
 `method` also accepts an expression that returns the method name. `configure readTimeout` aliases `timeout`; values must be positive integer milliseconds within Go's duration range. `configure strictResponseParsing = true` fails on malformed JSON or XML for the corresponding response content type.
 
 ## TLS, proxy and SOAP
 
-`configure connectTimeout = 5000` sets a positive TCP connection timeout in milliseconds. `configure ssl = true` trusts test certificates. For verification use `configure ssl = { trustAll: false, caCert: '/path/ca.pem' }`; optional PEM `cert` and `key` enable mutual TLS, and `algorithm` accepts `TLS`, `TLSv1.2` or `TLSv1.3`. A CA is added to the transport's current root pool, or to the system pool when that transport has none. Java keystore formats are unsupported.
+For a private CA, configure its PEM file:
 
-`configure proxy = 'http://localhost:8080'` selects a proxy. An object accepts `uri`, `username`, `password` and `nonProxyHosts` (Go glob patterns). Null disables proxy use. These transport settings require a standard Go HTTP transport when embedding a custom client.
+```gherkin
+* configure ssl = { trustAll: false, caCert: '/path/ca.pem' }
+```
 
-`soap action 'urn:operation'` sets `SOAPAction`, selects `text/xml` and sends POST. Path arguments can include lists; null segments are skipped.
+Add `cert` and `key` for mutual TLS. `algorithm` accepts `TLS`, `TLSv1.2` or `TLSv1.3`. `configure ssl = true` disables certificate verification for test servers; use a CA when you want verification. Java keystores are not supported.
+
+| Setting | Effect |
+| --- | --- |
+| `configure connectTimeout = 5000` | TCP connection timeout in milliseconds. |
+| `configure proxy = 'http://localhost:8080'` | Send requests through a proxy. |
+| `configure proxy = null` | Disable the proxy. |
+| `soap action 'urn:operation'` | Set `SOAPAction`, use `text/xml` and send POST. |
+
+A proxy object accepts `uri`, `username`, `password` and `nonProxyHosts` (Go glob patterns). TLS, proxy and connection settings require a standard Go HTTP transport when using a [custom Go client](embedding.md).
+
+??? note "CA trust pools"
+
+    A supplied CA is added to the transport's existing trust pool, or to the system pool if the transport has none.
 
 ## GraphQL
 
@@ -125,7 +140,7 @@ Scenario: find a user
   * match response.data.user == { id: '42', name: '#string' }
 ```
 
-Run with `gi test graphql.feature --var baseUrl=https://api.example.com`. This uses the same HTTP and match steps as REST; no GraphQL plugin is required.
+Save as `graphql.feature` and run `gi test graphql.feature --var baseUrl=https://your-api.example`. Replace that URL with a server exposing `/graphql` and the `user` query above. GraphQL uses the same HTTP and match steps as REST.
 
 ## Common mistakes
 

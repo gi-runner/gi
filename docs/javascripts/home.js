@@ -18,7 +18,12 @@ if (form && input && results && query && result) {
     }
     const links = result.querySelectorAll('.md-search-result__link');
     const list = document.createElement('ul');
+    const pages = new Set();
     for (const link of links) {
+      const page = link.href.split('#')[0];
+      if (pages.has(page)) continue;
+      pages.add(page);
+      if (pages.size > 8) break;
       const title = link.querySelector('h1, h2');
       const item = document.createElement('li');
       const anchor = document.createElement('a');
@@ -31,6 +36,7 @@ if (form && input && results && query && result) {
       if (article) {
         const copy = article.cloneNode(true);
         copy.querySelectorAll('h1, h2, .md-search-result__terms, .md-search-result__icon').forEach((node) => node.remove());
+        copy.querySelectorAll('p, pre, li, td, th').forEach((node) => node.append(' '));
         teaser = copy.textContent.replace(/\s+/g, ' ').trim();
         if (teaser.length > 140) teaser = teaser.slice(0, 140).replace(/\s+\S*$/, '') + '...';
       }
@@ -52,14 +58,10 @@ if (form && input && results && query && result) {
     results.hidden = false;
   };
 
-  const mark = () => {
-    document.documentElement.classList.toggle('gi-searching', input.value.trim().length > 0 && document.activeElement !== query);
-  };
-  query.addEventListener('focus', () => document.documentElement.classList.remove('gi-searching'));
+  input.addEventListener('focus', show);
   input.addEventListener('input', () => {
     results.hidden = true;
     ask();
-    mark();
   });
   form.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -67,15 +69,25 @@ if (form && input && results && query && result) {
     if (first) first.click();
   });
   input.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      results.hidden = true;
-      input.blur();
-    } else if (event.key === 'ArrowDown') {
+    if (event.key === 'ArrowDown') {
       const first = results.querySelector('a');
       if (first) {
         event.preventDefault();
         first.focus();
       }
+    }
+  });
+  form.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      input.focus({ preventScroll: true });
+      results.hidden = true;
+    } else if (results.contains(event.target) && ['ArrowDown', 'ArrowUp'].includes(event.key)) {
+      event.preventDefault();
+      const links = [...results.querySelectorAll('a')];
+      const index = links.indexOf(document.activeElement);
+      if (event.key === 'ArrowUp' && index === 0) input.focus();
+      else links[index + (event.key === 'ArrowDown' ? 1 : -1)]?.focus();
     }
   });
   document.addEventListener('click', (event) => {
