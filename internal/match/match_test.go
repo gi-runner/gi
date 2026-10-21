@@ -137,3 +137,33 @@ func BenchmarkContainsOnlyOverlapping(b *testing.B) {
 		}
 	}
 }
+
+func TestBytesEquality(t *testing.T) {
+	for _, tc := range []struct {
+		a, b any
+		mode match.Mode
+		pass bool
+	}{
+		{[]byte("abc"), []byte("abc"), match.Equals, true},
+		{[]byte("abc"), []byte("abd"), match.Equals, false},
+		{[]byte("abc"), []byte("abd"), match.NotEquals, true},
+		{map[string]any{"data": []byte("abc")}, map[string]any{"data": []byte("abc")}, match.Equals, true},
+	} {
+		if got := match.Match(tc.a, tc.b, tc.mode, match.Context{}); got.Pass != tc.pass {
+			t.Fatalf("%v: %s", tc, got.Message)
+		}
+	}
+}
+
+func TestValidatorErrorsAreDistinctFromMismatches(t *testing.T) {
+	for _, mode := range []match.Mode{match.Equals, match.NotEquals} {
+		result := match.Match(1, "#? missingFunction()", mode, ctx(nil))
+		if result.Pass || result.Err == nil {
+			t.Fatalf("mode %v: %+v", mode, result)
+		}
+	}
+	result := match.MatchEach([]any{1}, "#? missingFunction()", match.Equals, ctx(nil))
+	if result.Err == nil {
+		t.Fatalf("each dropped error: %+v", result)
+	}
+}

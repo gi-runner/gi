@@ -204,3 +204,79 @@ func TestCancelledInitializationReturnsError(t *testing.T) {
 		t.Fatal("cancelled helper initialization succeeded")
 	}
 }
+
+func TestNestedParkRestoresOuterHandoff(t *testing.T) {
+	origin := New()
+	ownerCtx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	ready := make(chan struct{})
+	done := make(chan struct{})
+	origin.SetFunction("hold", func(sobek.FunctionCall) sobek.Value {
+		first := true
+		_ = origin.Park(func(wake <-chan struct{}) (bool, error) {
+			if first {
+				close(ready)
+				first = false
+			}
+			select {
+			case <-wake:
+				return true, nil
+			case <-ownerCtx.Done():
+				return false, ownerCtx.Err()
+			}
+		})
+		return sobek.Undefined()
+	})
+	origin.SetFunction("inner", func(sobek.FunctionCall) sobek.Value {
+		timer := time.NewTimer(10 * time.Millisecond)
+		defer timer.Stop()
+		_ = origin.Park(func(wake <-chan struct{}) (bool, error) {
+			select {
+			case <-wake:
+				return true, nil
+			case <-timer.C:
+				return false, nil
+			}
+		})
+		return sobek.Undefined()
+	})
+	functions := make([]any, 0, 2)
+	for _, src := range []string{"function(){inner();return 1}", "function(){return 2}"} {
+		fn, err := origin.Eval(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		functions = append(functions, origin.Seal(fn))
+	}
+	go func() {
+		defer close(done)
+		stop, err := origin.Watch(ownerCtx)
+		if err != nil {
+			return
+		}
+		defer stop()
+		_, _ = origin.Eval("hold()")
+	}()
+	defer func() { cancel(); <-done }()
+	select {
+	case <-ready:
+	case <-ownerCtx.Done():
+		t.Fatal("owner did not park")
+	}
+	for i, fn := range functions {
+		caller := New()
+		ctx, stopCtx := context.WithTimeout(t.Context(), 500*time.Millisecond)
+		stop, err := caller.Watch(ctx)
+		if err != nil {
+			stopCtx()
+			t.Fatal(err)
+		}
+		caller.Set("f", fn)
+		got, err := caller.Eval("f()")
+		stop()
+		stopCtx()
+		if err != nil || got != int64(i+1) {
+			t.Fatalf("call %d: %v %v", i, got, err)
+		}
+	}
+}

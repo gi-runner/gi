@@ -45,7 +45,7 @@ With no comment and no flag, the run is 10 virtual users for 10 seconds. `--rps`
 
 The summary also reports the runner's CPU time, the process max RSS, and the peak number of goroutines.
 
-Under a user profile, `vu` is that user and `iter` counts its loops, both starting at 1. Under a rate profile, each start gets the next `vu` and `iter` stays 1. A user run reports the larger end of the population. A rate run reports the peak number of scenarios in flight.
+Under a user profile, `vu` is that user and `iter` counts its loops, both starting at 1. If a stage removes and later restarts a user, its iteration count continues. Under a rate profile, each start gets the next `vu` and `iter` stays 1. A user run reports the larger end of the population. A rate run reports the peak number of scenarios in flight.
 
 ## What counts as an error
 

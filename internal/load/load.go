@@ -172,8 +172,9 @@ type session struct {
 }
 
 type userSlot struct {
-	stop context.CancelFunc
-	done chan struct{}
+	iterations int
+	stop       context.CancelFunc
+	done       chan struct{}
 }
 
 func (s *session) runClosed(runCtx context.Context) {
@@ -181,7 +182,6 @@ func (s *session) runClosed(runCtx context.Context) {
 	n := s.plan.maxUsers()
 	slots := make([]userSlot, n)
 	var alive int
-	var mu sync.Mutex
 	var wg sync.WaitGroup
 	ensure := func(target int) {
 		if target < 0 {
@@ -190,8 +190,6 @@ func (s *session) runClosed(runCtx context.Context) {
 		if target > n {
 			target = n
 		}
-		mu.Lock()
-		defer mu.Unlock()
 		for alive > target {
 			alive--
 			if slots[alive].stop != nil {
@@ -201,7 +199,7 @@ func (s *session) runClosed(runCtx context.Context) {
 		for alive < target {
 			id := alive
 			alive++
-			s.startUser(runCtx, &wg, &mu, slots, id)
+			s.startUser(runCtx, &wg, slots, id)
 		}
 	}
 	wg.Go(func() {
@@ -218,28 +216,27 @@ func (s *session) runClosed(runCtx context.Context) {
 	wg.Wait()
 }
 
-func (s *session) startUser(runCtx context.Context, wg *sync.WaitGroup, mu *sync.Mutex, slots []userSlot, id int) {
+func (s *session) startUser(runCtx context.Context, wg *sync.WaitGroup, slots []userSlot, id int) {
 	if slots[id].done != nil {
 		done := slots[id].done
-		mu.Unlock()
 		select {
 		case <-done:
 		case <-runCtx.Done():
-			mu.Lock()
 			return
 		}
-		mu.Lock()
 	}
 	userCtx, stop := context.WithCancel(runCtx)
 	done := make(chan struct{})
-	slots[id] = userSlot{stop: stop, done: done}
+	slots[id].stop, slots[id].done = stop, done
 	lu := &local{samples: map[string]*hist{}}
 	wg.Go(func() {
 		defer close(done)
 		defer stop()
 		defer s.fold(lu)
-		for iter := 1; ; iter++ {
-			if !s.once(runCtx, userCtx, lu, time.Time{}, id+1, iter) {
+		// Only this worker owns the counter; a replacement waits for done.
+		for {
+			slots[id].iterations++
+			if !s.once(runCtx, userCtx, lu, time.Time{}, id+1, slots[id].iterations) {
 				return
 			}
 		}

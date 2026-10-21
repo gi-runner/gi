@@ -3,6 +3,7 @@ package browser
 import (
 	"context"
 	"fmt"
+	"iter"
 	"os"
 	"slices"
 	"strings"
@@ -110,45 +111,14 @@ func (p *page) act(ctx context.Context, fn func(context.Context) error) error {
 		return err
 	}
 	t := p.activeTab()
-	p.mu.Lock()
-	first := !t.ready
-	if first {
-		t.ready = true
-	}
-	p.mu.Unlock()
-	if first {
-		err := p.prime(ctx, t, fn)
-		if err != nil {
+	if !t.ready {
+		if err := t.init(ctx); err != nil {
+			drop(t.cancel)
 			return err
 		}
-		t.id = targetOf(t.ctx) //nolint:contextcheck // the id comes from the initialized target
 		t.watch()
-		return nil
 	}
 	return t.run(ctx, fn)
-}
-
-// The first action has to run on the target context. A child would bind the
-// browser's lifetime to the step deadline.
-func (p *page) prime(ctx context.Context, t *tab, fn func(context.Context) error) error {
-	done := make(chan error, 1)
-	go func() { done <- fn(t.ctx) }()
-	select {
-	case err := <-done:
-		return err
-	case <-ctx.Done():
-		select {
-		case err := <-done:
-			return err
-		default:
-			t.cancel()
-			if p.cancel != nil {
-				p.cancel()
-			}
-			<-done
-			return ctx.Err()
-		}
-	}
 }
 
 func (p *page) Close() error {
@@ -185,12 +155,14 @@ func (t *tab) watch() {
 		return
 	}
 	t.watched = true
-	go t.dialogs()
-	go t.paused()
+	dialogs := chromedp.Events(t.ctx, cdpPage.JavascriptDialogOpening)
+	paused := chromedp.Events(t.ctx, fetch.RequestPaused)
+	go t.dialogs(dialogs)
+	go t.paused(paused)
 }
 
-func (t *tab) dialogs() {
-	for ev, err := range chromedp.Events(t.ctx, cdpPage.JavascriptDialogOpening) {
+func (t *tab) dialogs(events iter.Seq2[cdpPage.EventJavascriptDialogOpening, error]) {
+	for ev, err := range events {
 		if err != nil {
 			return
 		}
@@ -215,8 +187,8 @@ func (t *tab) answer(ev cdpPage.EventJavascriptDialogOpening) {
 	})
 }
 
-func (t *tab) paused() {
-	for ev, err := range chromedp.Events(t.ctx, fetch.RequestPaused) {
+func (t *tab) paused(events iter.Seq2[fetch.EventRequestPaused, error]) {
+	for ev, err := range events {
 		if err != nil {
 			return
 		}

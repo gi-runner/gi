@@ -1136,35 +1136,9 @@ func ident(s string) bool {
 }
 
 func splitAssign(s string) (lhs, rhs string, ok bool) {
-	in := byte(0)
-	depth := 0
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if in != 0 {
-			if c == '\\' && i+1 < len(s) {
-				i++
-				continue
-			}
-			if c == in {
-				in = 0
-			}
-			continue
-		}
-		if c == '\'' || c == '"' {
-			in = c
-			continue
-		}
-		switch c {
-		case '[', '{', '(':
-			depth++
-		case ']', '}', ')':
-			if depth > 0 {
-				depth--
-			}
-		case '=':
-			if depth == 0 && (i+1 >= len(s) || s[i+1] != '=') && (i == 0 || !strings.ContainsRune("=!<>", rune(s[i-1]))) {
-				return s[:i], s[i+1:], true
-			}
+	for i := range topLevel(s) {
+		if s[i] == '=' && (i+1 >= len(s) || s[i+1] != '=') && (i == 0 || !strings.ContainsRune("=!<>", rune(s[i-1]))) {
+			return s[:i], s[i+1:], true
 		}
 	}
 	return "", "", false

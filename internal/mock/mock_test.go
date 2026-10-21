@@ -41,3 +41,27 @@ func TestMatcherErrorsFailClosed(t *testing.T) {
 		t.Fatalf("matcher error returned %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestStepValidatorExceptionDoesNotSelectFallback(t *testing.T) {
+	for _, predicate := range []string{"missingFunction()", "false"} {
+		f, err := feature.Parse("mock.feature", `Feature: mock
+Scenario: primary
+* match request == '#? `+predicate+`'
+* def response = 'primary'
+Scenario: fallback
+* def response = 'fallback'
+`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		w := httptest.NewRecorder()
+		Handler(f).ServeHTTP(w, httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/x", strings.NewReader("{}")))
+		want := 500
+		if predicate == "false" {
+			want = 200
+		}
+		if w.Code != want {
+			t.Fatalf("%s: %d %s", predicate, w.Code, w.Body.String())
+		}
+	}
+}

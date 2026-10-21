@@ -288,3 +288,24 @@ Scenario: file inputs
 		}
 	}
 }
+
+func TestDialogDuringInitialNavigation(t *testing.T) {
+	if !chromePresent() {
+		t.Skip("chrome is not installed")
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<script>alert('initial dialog')</script><div id="done">loaded</div>`))
+	}))
+	defer srv.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+	p, err := Open(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = p.Close() }()
+	if err := p.Open(ctx, srv.URL); err != nil {
+		t.Fatal(err)
+	}
+}

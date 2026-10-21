@@ -2,6 +2,7 @@ package engine
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/gi-runner/gi/internal/match"
@@ -76,6 +77,9 @@ func (e *exec) match(rest, doc string, sr *StepResult) error {
 		return nil
 	}
 	sr.Diff = res.Message
+	if res.Err != nil {
+		return fmt.Errorf("match validator: %w", res.Err)
+	}
 	if e.opt.Mock {
 		return &missError{reason: firstDiffLine(res.Message)}
 	}
@@ -117,23 +121,7 @@ func (e *exec) evalMatchSide(lhs string) (any, error) {
 }
 
 func splitMatch(s string) (lhs string, mode match.Mode, rhs string, ok bool) {
-	in := byte(0)
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if in != 0 {
-			if c == '\\' && i+1 < len(s) {
-				i++
-				continue
-			}
-			if c == in {
-				in = 0
-			}
-			continue
-		}
-		if c == '\'' || c == '"' {
-			in = c
-			continue
-		}
+	for i := range topLevel(s) {
 		for _, candidate := range matchOps {
 			if !strings.HasPrefix(s[i:], candidate.text) || !opBounded(s, i, i+len(candidate.text), candidate.text) {
 				continue

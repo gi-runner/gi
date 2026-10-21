@@ -2,6 +2,7 @@ package load
 
 import (
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -193,4 +194,40 @@ func mustFeature(t *testing.T, src string) *feature.File {
 		t.Fatal(err)
 	}
 	return f
+}
+
+func TestRestartedUserKeepsIterationSequence(t *testing.T) {
+	f := mustFeature(t, `Feature: sequence
+Scenario: send
+* url 'http://load.example.test/' + vu + '/' + iter
+* method get
+* pause(10)
+`)
+	var mu sync.Mutex
+	seen := map[string]bool{}
+	duplicate := ""
+	hits := 0
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if seen[r.URL.Path] {
+			duplicate = r.URL.Path
+		}
+		seen[r.URL.Path] = true
+		hits++
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: http.NoBody, Request: r}, nil
+	})}
+	_, err := Run(t.Context(), f, Config{Client: client, Stages: []Stage{
+		{From: 1, Duration: 150 * time.Millisecond},
+		{Spike: true, From: 0, Duration: 100 * time.Millisecond},
+		{From: 1, Duration: 150 * time.Millisecond},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if duplicate != "" || hits < 3 {
+		t.Fatalf("duplicate=%q hits=%d", duplicate, hits)
+	}
 }

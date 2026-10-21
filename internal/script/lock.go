@@ -42,14 +42,16 @@ func (v *VM) changedLocked() {
 func (v *VM) Park(step func(wake <-chan struct{}) (bool, error)) error {
 	wake := make(chan struct{}, 1)
 	v.sched.Lock()
+	parked, previousWake := v.parked, v.wake
 	v.parked = true
 	v.wake = wake
 	v.changedLocked()
 	v.sched.Unlock()
 	defer func() {
 		v.sched.Lock()
-		v.parked = false
-		v.wake = nil
+		// A retained callback can park again while its caller is still waiting.
+		v.parked = parked
+		v.wake = previousWake
 		v.changedLocked()
 		v.sched.Unlock()
 	}()

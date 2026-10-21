@@ -2,7 +2,9 @@
 package match
 
 import (
+	"bytes"
 	"fmt"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -72,6 +74,7 @@ type Failure struct {
 }
 
 type Result struct {
+	Err      error
 	Pass     bool
 	Message  string
 	Failures []Failure
@@ -99,7 +102,7 @@ func Match(actual, expected any, mode Mode, ctx Context) Result {
 	fails := matchValue(actual, expected, inner, "$", &ctx)
 	if ctx.err != nil {
 		failures := fail("$", "validator evaluation failed: "+ctx.err.Error(), actual, expected)
-		return Result{Message: formatMessage(mode, failures), Failures: failures}
+		return Result{Err: ctx.err, Message: formatMessage(mode, failures), Failures: failures}
 	}
 	if neg {
 		if len(fails) == 0 {
@@ -140,6 +143,9 @@ func MatchEach(actual, expected any, mode Mode, ctx Context) Result {
 	var idxs []int
 	for i, el := range arr {
 		child := Match(el, expected, mode, ctx)
+		if child.Err != nil {
+			return child
+		}
 		if child.Pass {
 			continue
 		}
@@ -252,6 +258,12 @@ func matchEquals(actual, expected any, path string, ctx *Context) []Failure {
 			return fail(path, "not equal", actual, expected)
 		}
 		return nil
+	case []byte:
+		b, ok := expected.([]byte)
+		if ok && bytes.Equal(a, b) {
+			return nil
+		}
+		return fail(path, "not equal", actual, expected)
 	case []any:
 		exp, ok := expected.([]any)
 		if !ok {
@@ -272,7 +284,7 @@ func matchEquals(actual, expected any, path string, ctx *Context) []Failure {
 		}
 		return matchMaps(a, exp, Equals, path, ctx)
 	default:
-		if actual == expected {
+		if reflect.ValueOf(actual).Comparable() && reflect.ValueOf(expected).Comparable() && actual == expected {
 			return nil
 		}
 		return fail(path, "not equal", actual, expected)
