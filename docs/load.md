@@ -2,6 +2,23 @@
 
 `gi load` runs the same scenarios as `gi test`. A scenario tagged `@noload` is skipped. `@ignore` is skipped in both modes.
 
+## Try it
+
+Use `hello.feature` and the running mock from the [quick start](quickstart.md), then run:
+
+```bash
+gi load hello.feature --var baseUrl=http://127.0.0.1:18081 \
+  --rate 20 --duration 5s --max-inflight 20 \
+  --threshold 'p95 < 500ms' --threshold 'errorRate < 1%' \
+  --report load.html
+```
+
+The runner schedules 20 scenario starts per second for five seconds. The summary shows iterations, requests, HTTP latency, missed starts, and a pass/fail result for each threshold. Open `load.html` for the same measurements. Counts and latency depend on the machine and service; work still in flight at the end is cancelled.
+
+Exit status `0` means the run and thresholds passed. A failed assertion or threshold exits `1`. Invalid profile options exit `2`.
+
+## Choose a profile
+
 The profile is either a population of virtual users or a start rate. Users are a closed loop: a user finishes an iteration, then starts the next, so concurrency stays on the profile. A start rate is an open loop: the next scenario starts when it is due, whether or not earlier ones have finished. In-flight work is then an outcome, not the control.
 
 | Profile | What is controlled | Comment |
@@ -25,10 +42,10 @@ gi load examples/users.feature \
   --vus 20 --duration 10s --warmup 2s \
   --threshold 'p95 < 200ms'
 
-gi load examples/users.feature --rate 50 --duration 30s
-gi load examples/users.feature --vus 1 --vus-to 40 --duration 30s
-gi load examples/users.feature --rate 10 --rate-to 200 --duration 30s
-gi load examples/users.feature \
+gi load examples/users.feature --var baseUrl=http://127.0.0.1:18080 --rate 50 --duration 30s
+gi load examples/users.feature --var baseUrl=http://127.0.0.1:18080 --vus 1 --vus-to 40 --duration 30s
+gi load examples/users.feature --var baseUrl=http://127.0.0.1:18080 --rate 10 --rate-to 200 --duration 30s
+gi load examples/users.feature --var baseUrl=http://127.0.0.1:18080 \
   --stage 'users=1:40 duration=30s' \
   --stage 'users=40 duration=1m' \
   --stage 'spike users=200 duration=10s' \
@@ -78,3 +95,14 @@ Operators are `<`, `>`, `<=`, and `>=`. A failed threshold fails the run. Thresh
 ```gherkin
 * def email = 'user-' + vu + '-' + iter + '@example.com'
 ```
+
+## Common mistakes
+
+| Symptom | Check |
+| --- | --- |
+| gi rejects `--vus` with `--rate` | Choose a user profile or an arrival-rate profile. They cannot be combined. |
+| gi rejects `--stage` with `--duration` | Each stage carries its own duration. Stages replace the simple profile. |
+| The run misses starts | Check service latency, runner capacity, and `--max-inflight`. Increasing the cap can increase pressure on the service. |
+| `schedP95` exceeds HTTP `p95` | Scheduled latency also includes waiting to start and scenario work before the request. |
+| Login dominates each iteration | Move reusable authentication to `@setup` and call `gi.setupOnce()`. |
+| Many paths appear as `[other endpoints]` | Review dynamic URL segments and the `--max-endpoints` limit. Overall counts still include those requests. |

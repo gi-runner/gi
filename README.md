@@ -15,6 +15,8 @@
 
 **[Documentation](https://gi-runner.github.io/gi/)** · [Quick start](https://gi-runner.github.io/gi/quickstart/) · [Examples](examples/)
 
+[REST, GraphQL and SOAP](https://gi-runner.github.io/gi/http/) · [Browser automation](https://gi-runner.github.io/gi/browser/) · [WebSocket, gRPC and Kafka](https://gi-runner.github.io/gi/protocols/)
+
 ```bash
 go install github.com/gi-runner/gi/cmd/gi@latest
 ```

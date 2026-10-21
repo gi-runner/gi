@@ -1,6 +1,10 @@
-# Protocols
+# Messaging
 
-WebSocket, gRPC, Kafka, and the browser are opened from the scenario. The engine does not dial them. `gi test` and `gi load` do.
+Use WebSocket, gRPC and Kafka from feature files in `gi test`, `gi load`, or the Go API. Each link closes when its scenario ends.
+
+## Before you run
+
+Start the service you are testing and supply its address in config or with `--var`, such as `--var wsUrl=ws://127.0.0.1:8080/echo`. The examples below are scenario steps; put them under `Feature:` and `Scenario:` headings. WebSocket's example assumes an echo server, gRPC's assumes the health service, and Kafka's requires the named topic.
 
 ## gi.channel
 
@@ -12,6 +16,8 @@ WebSocket, gRPC, Kafka, and the browser are opened from the scenario. The engine
 * def got = sock.receive()
 * match got == 'ping'
 ```
+
+An echo server returns `ping`, so the match passes. A connection, receive, or assertion failure fails the scenario. Each operation uses the configured timeout.
 
 | Kind | Spec | Methods |
 | --- | --- | --- |
@@ -44,27 +50,7 @@ The link closes when the scenario ends.
 
 ## Browser
 
-`driver` opens a URL in headless Chrome. Actions accept CSS or XPath selectors; single-element locators also support text selectors. `gi.pageText` reads an element.
-
-```gherkin
-* driver pageUrl
-* input '#name' = 'Ada'
-* click '#go'
-* def got = gi.pageText('#out')
-* match got == 'Ada'
-```
-
-`click` and `input` fail with `driver is not open` until `driver` has run. The page closes when the scenario ends. A machine without Chrome fails the `driver` step.
-
-### Actions and locators
-
-After opening `driver`, global helpers and driver methods support `click`, `input`, `inputFile`, `clear`, `select`, `focus`, `scroll`, `text`, `html`, `value`, `attribute`, `exists`, `enabled`, `locate`, `locateAll`, `waitFor`, `waitForText`, `waitForEnabled`, `waitForUrl`, string `waitUntil`, `script` and `screenshot`. Navigation includes back, forward and refresh; `driver.url` and `driver.title` are readable properties. Locators support CSS, XPath and single-element text selectors. Located elements expose fluent actions and read properties.
-
-Screenshots return PNG bytes and are attached to the step that took them. Shared calls retain browser ownership; isolated calls borrow an existing page without closing it.
-
-`driver.frame(selector)` runs later locators inside that frame's document. `driver.frame()` returns to the top document. The frame has to be same-origin, so `srcdoc` and a page on the same host work. `driver.dialog(false)` dismisses the next alert, confirm, or prompt. `driver.dialog(true, 'Ada')` accepts it and types into a prompt. `driver.dialogText()` is the message of the last dialog. `driver.intercept('/secret', { status: 200, body: 'hidden' })` answers a later request whose URL contains that text. The rule belongs to that window. A window opened afterward keeps the rules already set and enables interception on its own target. `driver.intercept()` clears the current window's rules. `driver.window(url)` opens that URL in a new window and switches to it. `driver.window()` lists `{ index, url, title }`. `driver.window(n)` switches to that index.
-
-Providers, a full browser cookie jar, and the full fluent retry API remain incomplete.
+See [Browser automation](browser.md) for Chrome actions, locators, frames, windows and screenshots.
 
 ## gRPC TLS and metadata
 
@@ -103,14 +89,15 @@ Strings use text messages; byte values use binary messages. `receive()` returns 
 
 ## Browser uploads
 
-```gherkin
-* driver pageUrl
-* inputFile('#document', 'report.pdf')
-* driver.inputFile('#photos', ['front.png', 'back.png'])
-* locate('#document').inputFile('replacement.pdf')
-* inputFile('#document', [])
-```
+See [browser file uploads](browser.md#file-uploads).
 
-Upload paths resolve like `read()`: relative to the feature or project root, with `this:`, `classpath:` and `file:` prefixes. Files must exist and be regular files. Lists support multiple inputs; an empty list clears the selection. CSS, XPath and single-element text locators use the same lookup as other actions.
+## Common mistakes
 
-gi preserves Chrome's default sandbox settings. On a restricted CI host that cannot run it, `GI_CHROME_NO_SANDBOX=true` explicitly disables it. The Linux CI job uses this workaround; regular runs do not disable the sandbox automatically.
+| Symptom | Check |
+| --- | --- |
+| A channel fails to connect | Confirm the broker/service address is reachable from the runner, including container port mappings. |
+| gRPC cannot find the schema | Enable server reflection or set `descriptor` to a FileDescriptorSet containing the service and its imported types. |
+| `rpc.call` rejects a method | Streaming methods use `rpc.open`; `call` is unary only. |
+| Kafka `receive` waits at offset `end` | Produce after opening the link. `end` skips records that already exist. |
+| A Kafka group skips previously read records | Successful `receive` calls commit them. Use a different group for a fresh consumer history. |
+| A WebSocket assertion sees bytes instead of text | The incoming message type determines the return type. Binary frames return bytes. |

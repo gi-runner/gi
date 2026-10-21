@@ -56,3 +56,13 @@ Flags may follow the file path. Use `--` before paths beginning with `-`. `gi te
 ## Version
 
 `gi version` prints `gi` and the version.
+
+## Common mistakes
+
+| Symptom | Check |
+| --- | --- |
+| `no .feature files found` | Supply the feature path or a directory containing features. |
+| `no scenarios ran` | Check tags and environment selection. A selection with no runnable scenarios fails. |
+| A path beginning with `-` is parsed as a flag | Put `--` before the path, after all flags. |
+| A variable value contains commas | Use `--var 'names=Ada,Grace'`. Repeat `--var` for different variables. |
+| A threshold is split into separate arguments | Quote it: `--threshold 'p95 < 200ms'`. |

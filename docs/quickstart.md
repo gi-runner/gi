@@ -50,6 +50,8 @@ In another terminal, run:
 gi test hello.feature --var baseUrl=http://127.0.0.1:18081 --report report.html
 ```
 
+The command exits with status `0` and marks `get a greeting` as passed. It writes `report.html` in your current directory.
+
 Open `report.html` to inspect the steps and HTTP exchange. Change the expected message and run again to see a match failure.
 
 ## Run under load
@@ -60,6 +62,15 @@ gi load hello.feature --var baseUrl=http://127.0.0.1:18081 \
 ```
 
 The assertions stay the same. The load report adds throughput, latency percentiles and errors. Stop the mock with Ctrl+C when finished.
+
+## If it fails
+
+| Symptom | Check |
+| --- | --- |
+| Connection refused | Keep the mock running in the first terminal. The test URL must use the same port. |
+| `baseUrl` is not defined | Include `--var baseUrl=http://127.0.0.1:18081`. Variable names are case-sensitive. |
+| HTTP 404 | The mock route is `/hello`; use `path 'hello'`. |
+| Match failure | Open the report for the actual response and failing path. Restore the expected message before trying load mode. |
 
 ## Next steps
 

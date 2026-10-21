@@ -1,22 +1,95 @@
-# One feature. Test, mock, load.
+---
+template: home.html
+hide:
+  - navigation
+  - toc
+---
 
-Karate for Go. Write readable API tests and run them with one native binary. No JVM.
+## Start here
 
-[Get started](quickstart.md){ .md-button .md-button--primary }
-[Language reference](language.md){ .md-button }
+Jump straight to a working example or a core feature.
 
-## What do you want to do?
+<div class="gi-topic-grid" markdown="1">
 
-| Task | Start here |
-| --- | --- |
-| Write your first test | [Quick start](quickstart.md) — a local mock and a working test. |
-| Test an API | [HTTP](http.md) and [assertions](match.md). |
-| Work with test data | [JSON, XML and data-driven scenarios](data.md). |
-| Share setup and flows | [Configuration, feature calls and tags](suite.md). |
-| Measure performance | [Virtual users, latency and thresholds](load.md). |
-| Mock a dependency | [HTTP mocks](mock.md). |
-| Automate a browser or use messaging | [Browser, WebSocket, gRPC and Kafka](protocols.md). |
-| Run in automation | [CLI flags](cli.md) and [reports](reports.md). |
-| Call gi from Go | [Embedding API](embedding.md). |
+- [**Your first test**<br>Start a local mock, make a request, and check the response.](quickstart.md)
+- [**JSON assertions**<br>Match complete responses with schemas, predicates, and fuzzy markers.](match.md)
+- [**Reusable flows**<br>Share login, setup, and helpers with feature calls.](suite.md#call)
+- [**Data-driven tests**<br>Run a scenario for each table row or generated input.](data.md#scenario-outline)
+- [**Load thresholds**<br>Set a request rate and fail on latency or errors.](load.md#metrics)
+- [**Tests in CI**<br>Run a tagged suite and keep its reports when a job fails.](automation.md)
 
-See [limits](limits.md) for unsupported APIs. Report bugs and request features in [GitHub Issues](https://github.com/gi-runner/gi/issues).
+</div>
+
+## Explore the documentation
+
+Browse by section, from your first request to running gi inside Go.
+
+<div class="gi-section-grid" markdown="1">
+
+<section markdown="1">
+
+### Get started
+
+Install gi and run a working example against a local mock.
+
+[Install](install.md) · [Quick start](quickstart.md)
+
+
+</section>
+
+<section markdown="1">
+
+### Write tests
+
+Build requests, validate responses, and work with test data.
+
+[Language](language.md) · [HTTP, GraphQL and SOAP](http.md) · [Assertions](match.md) · [JSON, XML and data](data.md) · [Calls and configuration](suite.md)
+
+
+</section>
+
+<section markdown="1">
+
+### Run tests
+
+Select scenarios, run in parallel, and inspect the results.
+
+[Command line](cli.md) · [Parallel execution](suite.md#parallel) · [Reports](reports.md) · [CI and automation](automation.md)
+
+
+</section>
+
+<section markdown="1">
+
+### Test more
+
+Reuse feature files under load, stub dependencies, or exercise a browser and messaging services.
+
+[Load testing](load.md) · [HTTP mocks](mock.md) · [Browser automation](browser.md) · [WebSocket, gRPC and Kafka](protocols.md)
+
+
+</section>
+
+<section markdown="1">
+
+### Use gi from Go
+
+Run features in your application or tests, and expose Go helpers to scenarios.
+
+[Embedding API](embedding.md) · [Register a helper](embedding.md#register-a-helper)
+
+
+</section>
+
+<section markdown="1">
+
+### Know the boundaries
+
+Check current limits or report a problem with a small reproducer.
+
+[Limits](limits.md) · [GitHub Issues](https://github.com/gi-runner/gi/issues)
+
+
+</section>
+
+</div>

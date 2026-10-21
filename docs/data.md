@@ -68,20 +68,26 @@ Use XPath set/remove for XML mutation. Scalar and native XML fragment replacemen
 
 ## Scenario Outline
 
-A table of literals is expanded when the file is parsed. `<name>` in the steps, docstrings, and tables is replaced.
+A table runs the same steps with different inputs. Save this as `ages.feature`:
 
 ```gherkin
-Scenario Outline: age <age> is rejected
-  * request { age: <age> }
-  * method post
-  * status 400
+Feature: Age checks
+
+Scenario Outline: minimum age
+  * def accepted = <age> >= 18
+  * match accepted == <expected>
   Examples:
-    | age |
-    | 10  |
-    | 20  |
+    | age | expected |
+    | 17  | false    |
+    | 18  | true     |
+    | 36  | true     |
 ```
 
-The scenario name gains the row, for example `age 10 is rejected [age=10]`. Each column is also a variable, `__row` is the row object, and `__num` is the zero-based row number. Tags on the `Examples` block are added to those scenarios.
+Run `gi test ages.feature`. Three scenarios pass, one per row. Change the first expected value to `true` to see a failure for that row.
+
+`<name>` in steps, docstrings and tables is replaced before execution. Each column is also a variable; ordinary table cells bind strings. Use the placeholder form above to insert a numeric or boolean literal into an expression, or a typed `!` column as described below.
+
+The scenario name gains the row, for example `minimum age [age=17, expected=false]`. `__row` is the row object and `__num` is the zero-based row number. Tags on the `Examples` block are added to its scenarios.
 
 ## Dynamic Examples
 
@@ -95,10 +101,10 @@ Scenario:
   * def data = [{ name: 'Ada' }, { name: 'Grace' }]
 
 Scenario Outline: hello <name>
-  * match '<name>' == '<name>'
+  * match name == '#string'
+  * match name == __row.name
   Examples:
     | gi.setup().data |
-    | |
 ```
 
 `gi.setupOnce().data` is the same list, computed once per suite. The expression can be any JavaScript that returns the list, including `read('rows.json')`.
@@ -106,3 +112,12 @@ Scenario Outline: hello <name>
 An outline with a dynamic header produces no scenarios when the list is empty.
 
 Columns ending in `!` are evaluated as expressions and bound without the suffix. For example, `count!` containing `2` binds the number `2`, while an ordinary `count` column binds a string. Dynamic rows retain nested objects and lists. Excluded outlines are filtered before their expressions execute.
+
+## Common mistakes
+
+| Symptom | Check |
+| --- | --- |
+| A CSV or Examples value does not match `#number` | CSV cells and ordinary Examples columns are strings. Convert with `Number(value)` or use a typed `!` Examples column. |
+| A dynamic outline runs no rows | Its expression must return a list of objects. An empty list runs no scenarios. |
+| A data file cannot be found | Relative paths start at the feature directory, then the project root. See [read](language.md#read). |
+| XML changes are lost or rejected | Use XPath `set`/`remove`; the JavaScript object view is read-only. |

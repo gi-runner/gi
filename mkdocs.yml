@@ -30,7 +30,11 @@ theme:
 extra_css:
   - stylesheets/extra.css
 
+extra_javascript:
+  - javascripts/home.js
+
 markdown_extensions:
+  - md_in_html
   - admonition
   - attr_list
   - tables
@@ -55,9 +59,11 @@ nav:
   - Run tests:
       - Command line: cli.md
       - Reports: reports.md
+      - CI and automation: automation.md
   - Test more:
       - Load testing: load.md
       - HTTP mocks: mock.md
-      - Browser and protocols: protocols.md
+      - Browser automation: browser.md
+      - Messaging: protocols.md
   - Go API: embedding.md
   - Limits: limits.md

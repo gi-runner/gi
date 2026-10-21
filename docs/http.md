@@ -2,16 +2,30 @@
 
 A scenario builds one request at a time. `method` sends it and clears the path, query, body, form, and multipart parts. The URL, headers, cookies, and auth stay for the next request.
 
+## Try it
+
+Start the mock from the [quick start](quickstart.md), then save this as `http.feature`:
+
 ```gherkin
-* url baseUrl
-* path 'users', id
-* param active = true
-* header Accept = 'application/json'
-* request { name: 'Ada' }
-* method post
-* status 201
-* match response.name == 'Ada'
+Feature: HTTP greeting
+
+Scenario: read a greeting
+  * url baseUrl
+  * path 'hello'
+  * param language = 'en'
+  * header Accept = 'application/json'
+  * method get
+  * status 200
+  * match response.message == 'Hello, Ada!'
 ```
+
+```bash
+gi test http.feature --var baseUrl=http://127.0.0.1:18081 --report http.html
+```
+
+The request is `GET /hello?language=en`. The mock returns status `200` and a JSON message; both assertions pass. Open `http.html` to inspect the URL, headers, and response.
+
+## Response values
 
 After `method`:
 
@@ -92,3 +106,34 @@ OAuth2 is the client-credentials grant. The first request of the scenario posts 
 `configure proxy = 'http://localhost:8080'` selects a proxy. An object accepts `uri`, `username`, `password` and `nonProxyHosts` (Go glob patterns). Null disables proxy use. These transport settings require a standard Go HTTP transport when embedding a custom client.
 
 `soap action 'urn:operation'` sets `SOAPAction`, selects `text/xml` and sends POST. Path arguments can include lists; null segments are skipped.
+
+## GraphQL
+
+Send the query and variables as a JSON request. Check GraphQL's `errors` field as well as HTTP status: a server may return query errors with status 200.
+
+```gherkin
+Feature: GraphQL users
+
+Scenario: find a user
+  * url baseUrl
+  * path 'graphql'
+  * def query = 'query User($id: ID!) { user(id: $id) { id name } }'
+  * request { query: '#(query)', variables: { id: '42' } }
+  * method post
+  * status 200
+  * match response.errors == '#notpresent'
+  * match response.data.user == { id: '42', name: '#string' }
+```
+
+Run with `gi test graphql.feature --var baseUrl=https://api.example.com`. This uses the same HTTP and match steps as REST; no GraphQL plugin is required.
+
+## Common mistakes
+
+| Symptom | Check |
+| --- | --- |
+| The next request loses its path or body | Set them again before each `method`; these builders are cleared after sending. |
+| A header comparison sees a list | `responseHeaders` contains lists. Use `match header Content-Type contains 'application/json'` to check the first value. |
+| A malformed JSON response remains text | Enable `configure strictResponseParsing = true` to fail parsing instead. |
+| Polling stops too soon | `retry.count` is the total attempts, including the first. `retry until` applies only to the next `method`. |
+| A GraphQL request returns 200 but has query errors | Check `response.errors` in addition to HTTP status. |
+| Authentication does not use the configured token | An existing `Authorization` header takes precedence over configured auth; a configured header callback can also replace it. |

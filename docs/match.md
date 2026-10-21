@@ -1,13 +1,29 @@
-# Match
+# Match assertions
+
+Validate JSON, XML and scalar values with schema markers, predicates and structural assertions.
 
 `match` compares two values. The left side is an expression. The right side is an expression, often a JSON document in a docstring. `#(name)` on the right is substituted before the comparison.
 
+## Try it
+
+Save as `assertions.feature`. This example needs no server:
+
 ```gherkin
-* match response == { id: '#uuid', name: 'Ada', age: '#number' }
-* match response.age == '#? _ > 18'
-* match response contains deep { tags: ['math'] }
-* match each response contains { id: '#uuid', name: '#string' }
+Feature: Response validation
+
+Scenario: validate one user
+  * def user = { id: 42, name: 'Ada', age: 36 }
+  * match user == { id: '#number', name: '#string', age: '#number' }
+  * match user.age == '#? _ >= 18'
+  * match user contains { name: 'Ada' }
+
+Scenario: validate a collection
+  * def users = [{ id: 42, name: 'Ada' }, { id: 43, name: 'Grace' }]
+  * match each users contains { id: '#number', name: '#string' }
+  * match users[*].id contains only [43, 42]
 ```
+
+Run `gi test assertions.feature --report assertions.html`. Both scenarios pass. Change `age: 36` to `age: 17`: the predicate fails, the command exits `1`, and the report identifies the failed assertion.
 
 ## Operators
 
@@ -53,3 +69,13 @@ A string on the right that starts with `#` is a marker, not a literal, except wh
 A missing key fails `#string` and `#null`. Use `#notpresent` when the key must be absent, and `##string` when it may be absent.
 
 Diffs stop after 20 mismatches. The failing path is included in the scenario error and in the HTML report.
+
+## Common mistakes
+
+| Symptom | Use instead |
+| --- | --- |
+| Equality fails because the response has extra keys | `contains` for a partial object; keep `==` when extra keys should fail. |
+| An array has the right values in a different order | `contains only` for an unordered comparison. Duplicate counts still matter. |
+| An optional field fails `#string` | `##string` accepts a missing or null field. |
+| A missing field fails `#null` | `#notpresent` requires absence; `#null` requires an explicit null. |
+| A predicate receives the wrong value | `_` is the value being checked; `$` is the left-hand root. |

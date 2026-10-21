@@ -43,3 +43,187 @@
 .md-nav--primary .md-nav__item:not(.md-nav__item--section) > .md-nav__link:hover {
   text-decoration: underline;
 }
+
+/* The landing page stays wide; reference pages keep the standard docs layout. */
+.md-main__inner:has(.gi-home) {
+  max-width: 76rem;
+}
+.gi-home {
+  padding: 1.5rem 1rem 3rem;
+}
+.gi-hero {
+  text-align: center;
+  padding: 1.5rem 0 2rem;
+}
+.gi-hero__eyebrow {
+  color: var(--md-accent-fg-color);
+  font-size: .75rem;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.md-typeset .gi-hero h1 {
+  margin: .6rem 0 1.2rem;
+  color: var(--md-default-fg-color);
+  font-size: clamp(2.2rem, 5vw, 3.8rem);
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -.045em;
+}
+.gi-hero h1 span {
+  font-weight: 400;
+}
+.gi-hero__description {
+  color: var(--md-default-fg-color--light);
+  font-size: 1.1rem;
+  line-height: 1.65;
+}
+.gi-search {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  width: min(100%, 42rem);
+  margin: 2rem auto 1.6rem;
+  padding: 1rem 1.2rem;
+  border: 1px solid var(--md-default-fg-color--lighter);
+  border-radius: .65rem;
+  background: var(--md-code-bg-color);
+  color: var(--md-default-fg-color);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.gi-search__icon {
+  display: flex;
+  flex: 0 0 1.4rem;
+}
+.gi-search svg {
+  width: 1.4rem;
+  fill: currentColor;
+}
+.gi-search kbd {
+  margin-left: auto;
+}
+.gi-search__example {
+  color: var(--md-default-fg-color--light);
+}
+.gi-hero__actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: .8rem;
+}
+.gi-hero__actions .md-button {
+  border-radius: .45rem;
+}
+.gi-usecases {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1rem;
+  margin: 1rem 0 3rem;
+}
+.md-typeset .gi-usecase {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: .9rem;
+  padding: 1rem .25rem;
+  border-radius: .5rem;
+  color: var(--md-default-fg-color);
+  text-align: center;
+  font-size: .75rem;
+}
+.gi-usecase svg {
+  width: 2rem;
+  height: 2rem;
+  fill: var(--gi-icon);
+}
+.gi-search:hover, .gi-usecase:hover {
+  background: var(--md-default-fg-color--lightest);
+}
+.gi-search:focus-visible, .gi-usecase:focus-visible {
+  outline: 2px solid var(--md-accent-fg-color);
+  outline-offset: 4px;
+}
+.gi-home__reference {
+  max-width: 60rem;
+  margin: auto;
+  padding-top: 1rem;
+  border-top: 1px solid var(--md-default-fg-color--lightest);
+}
+@media (max-width: 60rem) {
+  .gi-usecases { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 36rem) {
+  .gi-home { padding: 0 0 2rem; }
+  .gi-search__example { display: none; }
+  .gi-hero__description { font-size: .95rem; }
+  .gi-usecases { grid-template-columns: repeat(2, 1fr); gap: .5rem; }
+}
+
+[data-md-color-scheme="slate"] .gi-hero h1 { color: #f5f6f8; }
+[data-md-color-scheme="slate"] .gi-hero__description { color: #b9bdc7; }
+
+.gi-home__reference > h2 {
+  margin-top: 2rem;
+  font-weight: 600;
+}
+.md-typeset .gi-topic-grid ul {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .8rem;
+  margin: 1.3rem 0 3rem;
+  padding: 0;
+  list-style: none;
+}
+.md-typeset .gi-topic-grid li {
+  margin: 0;
+}
+.md-typeset .gi-topic-grid a {
+  display: block;
+  height: 100%;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: .5rem;
+  color: var(--md-default-fg-color--light);
+  font-size: .78rem;
+  line-height: 1.6;
+}
+.gi-topic-grid strong {
+  display: inline-block;
+  margin-bottom: .4rem;
+  color: var(--md-accent-fg-color);
+  font-size: .9rem;
+}
+.gi-topic-grid a:hover {
+  border-color: var(--md-accent-fg-color);
+  background: var(--md-default-fg-color--lightest);
+}
+.gi-topic-grid a:focus-visible {
+  outline: 2px solid var(--md-accent-fg-color);
+  outline-offset: 3px;
+}
+.gi-section-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 2.5rem;
+  margin-top: 1.3rem;
+}
+.gi-section-grid section {
+  padding: 1rem 0;
+  border-top: 1px solid var(--md-default-fg-color--lightest);
+}
+.gi-section-grid h3 {
+  margin: 0 0 .6rem;
+  font-weight: 600;
+}
+.gi-section-grid p {
+  margin: .5rem 0;
+  font-size: .8rem;
+}
+@media (max-width: 60rem) {
+  .md-typeset .gi-topic-grid ul { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 36rem) {
+  .md-typeset .gi-topic-grid ul, .gi-section-grid { grid-template-columns: 1fr; }
+}

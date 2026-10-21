@@ -1,9 +1,15 @@
 # Reports
 
+## Try it
+
+With `hello.feature` and the mock from the [quick start](quickstart.md):
+
 ```bash
-gi test examples/users.feature --var baseUrl=http://127.0.0.1:18080 \
+gi test hello.feature --var baseUrl=http://127.0.0.1:18081 \
   --report report.html --junit junit.xml --json report.json --cucumber cucumber.json
 ```
+
+A passing run exits `0` and writes all four files in the current directory. Open `report.html` locally, upload `junit.xml` to your CI test viewer, or use the JSON formats in other tools. A scenario failure still produces reports and exits `1`.
 
 The same flags work on `gi load`. Load HTML adds the latency table, open-loop scheduled latency, missed and late starts, and the thresholds. It does not log every request. Scheduled latency runs from the due time until the HTTP response is recorded. It is not the HTTP percentile.
 
@@ -15,7 +21,7 @@ Each scenario shows its steps, the step error, the match diff, and the HTTP exch
 
 A `call` step is a tree. The called feature's steps are nested under it, including calls that feature made.
 
-The timeline places every scenario that ran on one axis, from the start of the suite to the end. Overlapping bars are features that ran at the same time. A green bar passed. A red bar failed. Skipped scenarios are omitted.
+The timeline places every scenario that ran on one axis, from the start of the suite to the end. Overlapping bars are scenarios that ran at the same time. A green bar passed. A red bar failed. Skipped scenarios are omitted.
 
 ## JUnit and JSON
 
@@ -25,8 +31,25 @@ JSON is the same structure as the HTML view. Durations are milliseconds. The tim
 
 Cucumber JSON is one feature object per file. Step duration is nanoseconds. A passed step is `passed`. A failed step is `failed` and carries `error_message`. Expected failures accepted by `@fail` export as passed. Scenario failures without a failed step (including an unexpectedly passing `@fail`) export a failed `after` hook so consumers preserve the runner outcome.
 
-`karate.embed(value, mime, name)` and `screenshot()` add attachments to the step that produced them. The same applies to `beforeScenario`, `afterScenario`, `afterScenarioOutline`, `afterFeature`, and `onStepFailure`: the attachment stays on that hook step. The HTML report shows text inline and images inline. JSON stores the bytes as base64. Cucumber JSON stores them on the step as `embeddings`. Attachments from nested feature calls are included on the enclosing call step.
+## Attachments
+
+```gherkin
+* gi.embed({ orderId: 42 }, 'application/json', 'created order')
+* gi.embed('payment accepted', 'text/plain', 'receipt')
+```
+
+`gi.embed(value, mime, name)` and `screenshot()` add attachments to the step that produced them. The same applies to `beforeScenario`, `afterScenario`, `afterScenarioOutline`, `afterFeature`, and `onStepFailure`: the attachment stays on that hook step. Each attachment is limited to 4 MiB. HTML displays text and PNG, JPEG, GIF and WebP images inline. JSON stores the bytes as base64. Cucumber JSON stores them on the step as `embeddings`. Attachments from nested feature calls are included on the enclosing call step.
 
 ## OpenTelemetry
 
 `--otel-endpoint` posts an OTLP/HTTP JSON trace of the functional run. The collector must accept `application/json`. A failure to export is a warning. It does not fail the run. Load reports send the aggregated endpoint spans, not one span per request.
+
+## Common mistakes
+
+| Symptom | Check |
+| --- | --- |
+| No report file | Reports are opt-in. Pass the appropriate flag and a writable path. Argument and parse errors can stop a run before reports are written. |
+| CI loses reports on failure | Upload artifacts with `if: always()`; see [CI and automation](automation.md). |
+| Load HTML has no per-request detail | Load reports keep aggregates rather than every exchange. Reproduce with `gi test` for step-level debugging. |
+| An attachment is rejected | Each attachment must be at most 4 MiB. |
+| An image is not shown inline | Use PNG, JPEG, GIF or WebP with the matching MIME type. |

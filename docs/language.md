@@ -60,12 +60,6 @@ Each scenario has its own runtime. An assigned `call` and `gi.setup()` run in a 
 | `gi.append(list, ...items)` | Returns a new list, flattening list arguments by one level. |
 | `gi.channel(kind, spec)` | Opens a WebSocket, gRPC, or Kafka link. See [Protocols](protocols.md). |
 | `gi.pageText(selector)` | Text of an element in the open browser page. |
-| `gi.abort()` | Stops the scenario. The scenario passes. Later steps do not run. |
-| `gi.log(...)` | Writes to stdout. |
-| `gi.pause(ms)` | Waits. A cancelled run stops the wait. |
-| `gi.info` | `scenarioName`, `featureDir`, and `featureFileName`. |
-| `gi.write(value, path)` | Writes under `target/` relative to the project. The path cannot escape that directory. |
-| `gi.waitForHttp(url)` / `gi.waitForPort(host, port)` | Poll until the endpoint accepts a connection. |
 
 ```gherkin
 * def names = gi.map(users, function(x){ return x.name })
@@ -123,6 +117,8 @@ Collection helpers include `appendTo`, `forEach`, `repeat`, `range`, `distinct`,
 `karate.jsonPath(data, path)` supports recursive descent, filters, slices and unions within the native parser's grammar. `karate.xmlPath(document, xpath)` evaluates namespace-aware XPath. `karate.fromString(text)` recognizes JSON and XML, otherwise returning text. `karate.toJson(document)` returns the XML object view. XML mutation uses DSL XPath set/remove; JavaScript XML views are read-only.
 
 ## Runtime helpers
+
+For cross-scenario events, see [signal and listen](suite.md#signal-and-listen). For report attachments, see [Reports](reports.md#attachments).
 
 Use either `gi` or `karate` for these helpers:
 

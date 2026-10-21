@@ -2,6 +2,29 @@
 
 `gi test` with no path walks `features/`, then `examples/`, then the current directory. A directory argument walks every `.feature` file under it, skipping hidden directories and `vendor/`. One HTML report covers the whole run.
 
+## Try a reusable feature
+
+Save this as `greeting.feature`:
+
+```gherkin
+Feature: Greeting helper
+
+Scenario: greet
+  * def message = 'Hello, ' + name + '!'
+```
+
+Save this alongside it as `reuse.feature`:
+
+```gherkin
+Feature: Reuse a flow
+
+Scenario: call a helper
+  * def result = call read('greeting.feature') { name: 'Ada' }
+  * match result.message == 'Hello, Ada!'
+```
+
+Run `gi test reuse.feature`. The caller passes, and `result.message` contains the helper's result. Passing the caller path explicitly avoids also running the helper as an independent test.
+
 ## Parallel
 
 `--jobs` is how many features run at the same time. The default is one per CPU. Results stay in the order of the files, and the report is that order.
@@ -12,7 +35,24 @@
 | One file, `--jobs 4` | Four scenarios of that file. |
 | `--jobs 1` | One feature at a time, scenarios in order. |
 
-Scenarios that share a server and depend on each other's data should stay at `--jobs 1`, or live in one file that runs in order. `karate.signal(value)` and `karate.listen(milliseconds)` share a queue for the whole run, so one scenario can wait for another when `--jobs` is greater than 1. A signal sent first stays queued. `listen` fails when its timeout elapses. A separate `gi mock` process does not share the queue.
+Use `--jobs 1` when scenarios depend on each other's data. A single file runs scenarios concurrently when `--jobs` is greater than 1.
+
+## Signal and listen
+
+Two scenarios can exchange a value through the run's queue. Save this as `events.feature` and run `gi test events.feature --jobs 2`:
+
+```gherkin
+Feature: scenario events
+
+Scenario: wait for an event
+  * def event = gi.listen(5000)
+  * match event == { status: 'ready' }
+
+Scenario: publish an event
+  * gi.signal({ status: 'ready' })
+```
+
+A signal sent before `listen` stays queued. Each listen consumes one value and fails if its timeout elapses. Scenarios overlap when `--jobs` is greater than 1. The queue belongs to that run; a separate `gi mock` process cannot signal it.
 
 ## Config
 
@@ -33,7 +73,7 @@ function fn() {
 }
 ```
 
-## call
+## Call a feature {#call}
 
 ```gherkin
 * call read('login.feature')
@@ -41,15 +81,45 @@ function fn() {
 * callonce read('login.feature')
 ```
 
-`def result = call ...` runs the feature in its own JavaScript realm and returns the variables it defined. A function in that result keeps the callee's realm, including lexical bindings and built-in changes made there. A function that belongs to the caller still closes over the caller. That invocation stops when the isolated call's deadline fires, and the caller runtime then keeps its own deadline. A bare call shares the caller's runtime and propagates changed JSON data and persistent HTTP settings (URL, request headers, auth, timeouts, redirect following, and response parsing settings). Transient request builders are cleared. Isolated calls fork the cookie jar; shared calls replay changes into the caller. `karate.call(true, path, arg)` requests the shared runtime; `karate.call(path, arg)` uses a separate realm.
+| Form | Scope | Result |
+| --- | --- | --- |
+| `call read('login.feature')` | Shares caller variables and HTTP settings. | Variables are available to later steps. |
+| `def result = call read('login.feature')` | Separate JavaScript realm. | Read returned variables from `result`. |
+| `gi.call(path, arg)` | Separate realm; `gi.call(true, path, arg)` shares the caller. | Returns the called feature's variables. |
 
-The argument is an object or a list of objects. Object keys are bound as variables alongside `__arg`. List calls return a list of results and bind zero-based `__loop`; a single call uses `__loop = -1`. `child.feature:12` selects a scenario or outline by line; multiple lines use `:12:30`. `child.feature@tag` selects a tag, and `@tag` selects a scenario in the current file. Called features may use `@ignore`; setup and environment exclusions still apply. Excluded dynamic outlines are not evaluated.
+Assigned calls and setup isolate declarations and changes to built-ins. A returned function keeps the realm it closed over. Shared calls propagate persistent HTTP settings and cookie updates; isolated calls get a fork of the cookie jar. Transient request builders are cleared.
 
-`callonce` runs once per calling feature and resolved target; the first call's argument wins. `karate.callSingle(path, arg)` runs once per suite and supports feature or JavaScript files. A `?suffix` gives a singleton a distinct cache key. Cached results are copied and may contain JSON data or native XML. A function in that result, and a `configure` header or hook function, keeps calling the runtime that created it. Scenario variables are live and shared, so a sibling function and a later assignment are still visible, and `null` stays `null`. A lexical `let` or `var` stays with the function. Calling it observes the caller's cancellation, and `karate.info` reports that caller. While it is inside `listen`, `pause`, `waitForHttp`, or `waitForPort`, another scenario can call back into that runtime. Native functions and live protocol handles are rejected. Normal feature and JavaScript calls are not restricted to JSON cache data.
+### Arguments and selection
 
-Config is inherited without re-executing config files. Shared calls propagate header/hook configuration and browser ownership. Assigned calls and setup keep the caller's lexical bindings and built-ins unchanged. Cache hits replay cookie updates and call the original header and hook functions. During config bootstrap, re-entering the same feature singleton returns an empty object; ordinary recursive calls fail. Calls nest to a depth of 8. Hooks do not run inside called features.
+Pass an object to bind its keys as variables, also available through `__arg`. A list of objects calls the feature once per item and returns a list of results. `__loop` is the zero-based item index, or `-1` for a single call.
 
-The HTML report nests the called steps under the `call` step. See [Reports](reports.md).
+| Target | Selection |
+| --- | --- |
+| `child.feature:12` or `child.feature:12:30` | Scenario or outline at those lines. |
+| `child.feature@smoke` | Scenarios with that tag. |
+| `@smoke` | Tagged scenarios in the current file. |
+
+Called features may use `@ignore`; setup and environment exclusions still apply. Excluded dynamic outlines are not evaluated.
+
+### Cached setup
+
+`callonce` runs once per calling feature and resolved target; the first argument wins. `gi.callSingle(path, arg)` runs once per suite and accepts feature or JavaScript files. Add a `?suffix` to give a singleton a distinct cache key.
+
+Cached data is copied and may contain JSON or native XML. Cached functions, including configured header and hook callbacks, retain their original runtime and live closure state. Native functions and live protocol handles cannot be cached.
+
+??? note "Callback scope and cancellation"
+
+    A returned function sees its captured variables, sibling functions and later assignments. Its `let` and `var` bindings remain in the originating runtime. Invocation respects the caller's cancellation, and `gi.info` identifies that caller.
+
+    A parent function invoked from an isolated call still closes over the parent. It respects the isolated call's deadline; afterward, the parent keeps its own deadline. While a callback waits in `listen`, `pause`, `waitForHttp` or `waitForPort`, another scenario may call into that runtime.
+
+### Configuration and lifecycle
+
+Calls inherit configuration without re-running config files. Shared calls propagate header and hook settings and retain browser ownership. Assigned calls borrow an existing browser page without closing it. Cache hits replay cookie updates and use the original header and hook functions.
+
+Calls nest to a depth of 8. Ordinary recursive calls fail; during configuration bootstrap, re-entering the same feature singleton returns an empty object. Hooks do not run inside called features.
+
+The [HTML report](reports.md) nests called steps under the `call` step.
 
 ## Tags
 
@@ -110,3 +180,13 @@ Neither hook runs inside a called feature or inside `@setup`.
 `afterFeature` runs once after a feature. `afterScenarioOutline` runs once after all selected rows of an outline finish, including parallel execution. `onStepFailure` receives information with `proceed()` and `stop()` decisions.
 
 `@fail` expects scenario failure. `@lock=name` serializes scenarios sharing that name; `@lock=*` excludes all other scheduled scenarios in the suite. Lock waiting respects cancellation. `@report=false` suppresses step detail and print output, including called features. Runtime variables remain available to embedding callers. `@env` and `@envnot` accept comma-separated environment names.
+
+## Common mistakes
+
+| Symptom | Check |
+| --- | --- |
+| A helper is also run as a standalone test | Run the caller path explicitly or tag the helper `@ignore`; called features can still select it. |
+| `beforeScenario` does not run after a `configure` step | Define it in config. The before hook has already run when scenario steps begin. |
+| Scenarios depend on execution order | Use `--jobs 1`, or remove the dependency by giving each scenario its own data. |
+| A cached login uses the first account's data | `callonce` and `callSingle` reuse the first result for their cache key. Use separate keys for separate identities. |
+| Config changes do not appear in a call | Calls inherit configuration; they do not re-run config files. |

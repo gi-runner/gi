@@ -1,0 +1,36 @@
+{% extends "main.html" %}
+
+{% block content %}
+<div class="gi-home">
+  <section class="gi-hero" aria-labelledby="gi-title">
+    <p class="gi-hero__eyebrow">Karate for Go</p>
+    <h1 id="gi-title">One syntax.<br><span>Test your whole stack.</span></h1>
+    <p class="gi-hero__description">API tests, browser automation, load tests and mocks.<br>One native binary. No JVM.</p>
+    <button class="gi-search" type="button" data-gi-search>
+      <span class="gi-search__icon" aria-hidden="true">{% include ".icons/material/magnify.svg" %}</span>
+      <span>Search the docs <span class="gi-search__example">— try “JSON assertions”</span></span>
+      <kbd>/</kbd>
+    </button>
+    <div class="gi-hero__actions">
+      <a class="md-button md-button--primary" href="{{ 'quickstart/' | url }}">Quick start</a>
+      <a class="md-button" href="{{ 'language/' | url }}">Read the docs</a>
+    </div>
+  </section>
+  <nav class="gi-usecases" aria-label="Explore gi">
+    {% for title, icon, target, color in [
+      ('API testing', 'web', 'http/', '#2fc4da'),
+      ('Browser automation', 'monitor', 'browser/', '#ed72b1'),
+      ('Load testing', 'chart-line', 'load/', '#e9b453'),
+      ('Mocks', 'layers-outline', 'mock/', '#aa8cf3'),
+      ('Messaging', 'message-processing-outline', 'protocols/', '#42c6a4'),
+      ('Open source', 'github', 'https://github.com/gi-runner/gi', '#fa946a')
+    ] %}
+    <a class="gi-usecase" href="{{ target | url }}" style="--gi-icon: {{ color }}">
+      <span aria-hidden="true">{% include '.icons/material/' ~ icon ~ '.svg' %}</span>
+      <strong>{{ title }}</strong>
+    </a>
+    {% endfor %}
+  </nav>
+  <div class="gi-home__reference">{{ page.content }}</div>
+</div>
+{% endblock %}
