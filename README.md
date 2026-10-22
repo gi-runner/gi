@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">gi</h1>
-<p align="center">Karate for Go. API tests, mocks, and load tests. One binary. No JVM.</p>
+<p align="center"><strong>Write API tests once. Run them as functional tests and load tests.</strong><br>Karate for Go. One native binary. No JVM.</p>
 
 <p align="center">
   <a href="https://go.dev/dl/"><img src="https://img.shields.io/badge/Go-1.27.2-00ADD8?logo=go&logoColor=white" alt="Go 1.27.2"></a>
@@ -15,13 +15,15 @@
 
 **[Documentation](https://gi-runner.github.io/gi/)** · [Quick start](https://gi-runner.github.io/gi/quickstart/) · [Examples](examples/)
 
+Keep requests, test data and assertions in one feature file. Run it with `gi test` for regression testing, then `gi load` to check the same behavior under load—without maintaining a separate load script.
+
 [REST, GraphQL and SOAP](https://gi-runner.github.io/gi/http/) · [Browser automation](https://gi-runner.github.io/gi/browser/) · [WebSocket, gRPC and Kafka](https://gi-runner.github.io/gi/protocols/)
 
 ```bash
 go install github.com/gi-runner/gi/cmd/gi@latest
 ```
 
-`examples/users.feature` against `examples/users.mock.feature`:
+For example, `examples/users.feature` creates a user and reads it back:
 
 ```gherkin
 Feature: Users API
@@ -44,13 +46,17 @@ Scenario: create a user and read it back
   * match response.id == id
 ```
 
+From a checkout of this repository, start the example mock service:
+
 ```bash
 gi mock examples/users.mock.feature --addr :18080
 ```
 
-In another terminal:
+In another terminal, run the same test once, then under load. Both runs check the assertions above:
 
 ```bash
 gi test examples/users.feature --var baseUrl=http://127.0.0.1:18080 --report report.html
 gi load examples/users.feature --var baseUrl=http://127.0.0.1:18080 --vus 20 --duration 30s
 ```
+
+Use your service's URL as `baseUrl` to test it instead. See [load testing](https://gi-runner.github.io/gi/load/) for workload options and [supported scope and limits](https://gi-runner.github.io/gi/limits/) before migrating existing Karate tests.
