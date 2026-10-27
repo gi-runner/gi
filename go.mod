@@ -13,7 +13,7 @@ require (
 	github.com/grafana/sobek v0.0.0-20261016233236-69aa293c63a9
 	github.com/ohler55/ojg v1.28.7
 	github.com/spf13/cobra v1.10.2
-	github.com/spf13/pflag v1.0.9
+	github.com/spf13/pflag v1.0.10
 	github.com/twmb/franz-go v1.22.2
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20261018232743-f49d7ddc2cb4
 	golang.org/x/net v0.61.0
