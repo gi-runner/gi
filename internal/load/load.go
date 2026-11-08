@@ -82,6 +82,7 @@ type Slot struct {
 	Requests int64
 	Errors   int64
 	Mean     time.Duration
+	P95      time.Duration
 	Users    int
 }
 
@@ -508,8 +509,8 @@ func (s *session) finish(ctx context.Context) (Result, error) {
 const timelineSlots = 30
 
 type sampleSlot struct {
-	n, errN int64
-	sum     float64
+	errN int64
+	lat  hist
 }
 
 type collector struct {
@@ -559,8 +560,7 @@ func (l *collector) note(slot int, ex engine.Exchange) {
 		return
 	}
 	l.mu.Lock()
-	l.slots[slot].n++
-	l.slots[slot].sum += float64(ex.Duration)
+	l.slots[slot].lat.add(ex.Duration.Nanoseconds())
 	if ex.Error != "" {
 		l.slots[slot].errN++
 	}

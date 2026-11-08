@@ -244,6 +244,7 @@ type slotView struct {
 	Requests int64   `json:"requests"`
 	Errors   int64   `json:"errors"`
 	Mean     string  `json:"mean"`
+	P95      string  `json:"p95"`
 	Users    int     `json:"users"`
 }
 
@@ -468,6 +469,7 @@ func loadViewOf(ld load.Result) loadView {
 			Requests: slot.Requests,
 			Errors:   slot.Errors,
 			Mean:     slot.Mean.String(),
+			P95:      slot.P95.String(),
 			Users:    slot.Users,
 		})
 	}
@@ -575,8 +577,8 @@ const htmlPage = `<!DOCTYPE html>
   {{if .Timeline}}
   <h2>Across the run</h2>
   <table>
-    <tr><th>offset</th><th>users</th><th>requests</th><th>errors</th><th>mean</th></tr>
-    {{range .Timeline}}<tr><td>{{fmtms .OffsetMS}}</td><td>{{.Users}}</td><td>{{.Requests}}</td><td>{{.Errors}}</td><td>{{.Mean}}</td></tr>{{end}}
+    <tr><th>offset</th><th>users</th><th>requests</th><th>errors</th><th>mean</th><th>p95</th></tr>
+    {{range .Timeline}}<tr><td>{{fmtms .OffsetMS}}</td><td>{{.Users}}</td><td>{{.Requests}}</td><td>{{.Errors}}</td><td>{{.Mean}}</td><td>{{.P95}}</td></tr>{{end}}
   </table>
   {{end}}
   {{if .Endpoints}}

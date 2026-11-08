@@ -121,13 +121,12 @@ func (s *session) timeline(elapsed time.Duration) []Slot {
 	for i := range s.collectors {
 		s.collectors[i].mu.Lock()
 		for b, slot := range s.collectors[i].slots {
-			if slot.n == 0 {
+			if slot.lat.n == 0 {
 				continue
 			}
 			saw = true
-			slots[b].n += slot.n
+			slots[b].lat.merge(slot.lat)
 			slots[b].errN += slot.errN
-			slots[b].sum += slot.sum
 		}
 		s.collectors[i].mu.Unlock()
 	}
@@ -143,15 +142,13 @@ func (s *session) timeline(elapsed time.Duration) []Slot {
 	width := span / timelineSlots
 	out := make([]Slot, timelineSlots)
 	for i := range out {
-		mean := time.Duration(0)
-		if slots[i].n > 0 {
-			mean = time.Duration(slots[i].sum / float64(slots[i].n))
-		}
+		stats := slots[i].lat.stats()
 		out[i] = Slot{
 			Offset:   time.Duration(i) * width,
-			Requests: slots[i].n,
+			Requests: slots[i].lat.n,
 			Errors:   slots[i].errN,
-			Mean:     mean,
+			Mean:     stats.Mean,
+			P95:      stats.P95,
 			Users:    usersOf(s.userPeak[i].Load()),
 		}
 	}

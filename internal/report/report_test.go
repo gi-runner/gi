@@ -172,7 +172,7 @@ func TestEndpointAggregationIsVisibleInReports(t *testing.T) {
 	if !strings.Contains(string(html), "5 requests aggregated") || !strings.Contains(string(html), "[other endpoints]") {
 		t.Fatal("HTML hid endpoint aggregation")
 	}
-	result.Timeline = []load.Slot{{Offset: 0, Requests: 3, Errors: 1, Mean: time.Millisecond, Users: 2}}
+	result.Timeline = []load.Slot{{Offset: 0, Requests: 3, Errors: 1, Mean: time.Millisecond, P95: 2 * time.Millisecond, Users: 2}}
 	if err := report.WriteHTML(htmlPath, doc); err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestEndpointAggregationIsVisibleInReports(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), `"requests": 3`) || !strings.Contains(string(raw), `"users": 2`) {
+	if !strings.Contains(string(raw), `"requests": 3`) || !strings.Contains(string(raw), `"users": 2`) || !strings.Contains(string(raw), `"p95": "2ms"`) {
 		t.Fatal("JSON hid the load timeline")
 	}
 	if !strings.Contains(string(raw), `"endpointLimit": 2`) || !strings.Contains(string(raw), `"endpointOverflow": 5`) {
