@@ -100,58 +100,58 @@ type Reply struct {
 }
 
 type Exchange struct {
-	Started         time.Time
-	Method          string
-	URL             string
-	Status          int
-	Duration        time.Duration
-	RequestHeaders  map[string]string
-	RequestBody     string
-	ResponseHeaders map[string]string
-	ResponseBody    string
-	Error           string
-	Endpoint        string
+	Started         time.Time         `json:"started"`
+	Method          string            `json:"method"`
+	URL             string            `json:"url"`
+	Status          int               `json:"status"`
+	Duration        time.Duration     `json:"duration"`
+	RequestHeaders  map[string]string `json:"requestHeaders,omitempty"`
+	RequestBody     string            `json:"requestBody,omitempty"`
+	ResponseHeaders map[string]string `json:"responseHeaders,omitempty"`
+	ResponseBody    string            `json:"responseBody,omitempty"`
+	Error           string            `json:"error,omitempty"`
+	Endpoint        string            `json:"endpoint,omitempty"`
 }
 
 type StepResult struct {
-	Started  time.Time
-	Line     int
-	Keyword  string
-	Text     string
-	Passed   bool
-	Canceled bool
-	Duration time.Duration
-	Error    string
-	Diff     string
-	Label    string
-	Output   string
-	HTTP     *Exchange
-	Calls    []StepResult
-	Embeds   []Embed
+	Started  time.Time     `json:"started"`
+	Line     int           `json:"line"`
+	Keyword  string        `json:"keyword"`
+	Text     string        `json:"text"`
+	Passed   bool          `json:"passed"`
+	Canceled bool          `json:"canceled,omitempty"`
+	Duration time.Duration `json:"duration"`
+	Error    string        `json:"error,omitempty"`
+	Diff     string        `json:"diff,omitempty"`
+	Label    string        `json:"label,omitempty"`
+	Output   string        `json:"output,omitempty"`
+	HTTP     *Exchange     `json:"http,omitempty"`
+	Calls    []StepResult  `json:"calls,omitempty"`
+	Embeds   []Embed       `json:"embeds,omitempty"`
 }
 
 // Embed is one report attachment produced by karate.embed or a screenshot.
 type Embed struct {
-	Name string
-	Mime string
-	Data []byte
+	Name string `json:"name"`
+	Mime string `json:"mime"`
+	Data []byte `json:"data"`
 }
 
 type ScenarioResult struct {
-	Name           string
-	Line           int
-	Tags           []string
-	Passed         bool
-	Canceled       bool
-	Skipped        bool
-	Miss           bool
-	Duration       time.Duration
-	Started        time.Time
-	Steps          []StepResult
-	Error          string
-	Vars           map[string]any
-	Defined        map[string]bool
-	ReportDisabled bool
+	Name           string          `json:"name"`
+	Line           int             `json:"line"`
+	Tags           []string        `json:"tags,omitempty"`
+	Passed         bool            `json:"passed"`
+	Canceled       bool            `json:"canceled,omitempty"`
+	Skipped        bool            `json:"skipped,omitempty"`
+	Miss           bool            `json:"miss,omitempty"`
+	Duration       time.Duration   `json:"duration"`
+	Started        time.Time       `json:"started"`
+	Steps          []StepResult    `json:"steps,omitempty"`
+	Error          string          `json:"error,omitempty"`
+	Vars           map[string]any  `json:"vars,omitempty"`
+	Defined        map[string]bool `json:"defined,omitempty"`
+	ReportDisabled bool            `json:"reportDisabled,omitempty"`
 }
 
 type FileResult struct {

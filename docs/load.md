@@ -63,6 +63,8 @@ Repeat `--stage` for each segment. Use `users=10` or `rate=50` to hold a level; 
 
 `--warmup` holds the opening level and discards those samples. The stages are the measured window.
 
+`--injectors 4` runs that profile in four processes. Virtual users, the start rate, `--rps`, and `--max-inflight` are split so the sum matches the profile. Each injector runs `@setup` itself. The processes start together, and the summary is the merged run, including call-site thresholds. One injector is the default. Closed-loop injectors cannot exceed the number of virtual users.
+
 ## Read the summary
 
 | Metric | Meaning |

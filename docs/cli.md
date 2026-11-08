@@ -47,7 +47,8 @@ Flags may follow the file path. Use `--` before paths beginning with `-`. `gi te
 | `--duration 10s` | Measured window. Stages carry their own durations. |
 | `--warmup 0s` | Unmeasured time before the window. |
 | `--rps n` | Cap on HTTP calls. `0` means no cap. |
-| `--threshold 'p95 < 200ms'` | Repeatable. Also `errorRate`, `rps`, `schedP95`, `missed`, and `late`. See [Load](load.md). |
+| `--injectors n` | Processes that share the profile. The default is one process. |
+| `--threshold 'p95 < 200ms'` | Repeatable. Also `errorRate`, `rps`, `schedP95`, `missed`, and `late`. A call site name follows the value. See [Load](load.md). |
 
 ## mock
 

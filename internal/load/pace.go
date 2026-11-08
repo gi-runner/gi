@@ -26,8 +26,11 @@ func waitUntil(ctx context.Context, due time.Time) error {
 
 // Normalize fills defaults and rejects a profile that mixes users with a start rate.
 func Normalize(cfg Config) (Config, error) {
-	if cfg.Warmup < 0 || cfg.VUs < 0 || cfg.VUsTo < 0 || cfg.RPS < 0 || cfg.MaxInFlight < 0 || cfg.MaxEndpoints < 0 || badNum(cfg.Rate) || badNum(cfg.RateTo) {
+	if cfg.Warmup < 0 || cfg.VUs < 0 || cfg.VUsTo < 0 || cfg.RPS < 0 || cfg.MaxInFlight < 0 || cfg.MaxEndpoints < 0 || cfg.Injectors < 0 || badNum(cfg.Rate) || badNum(cfg.RateTo) {
 		return Config{}, errors.New("load profile values must be finite and nonnegative")
+	}
+	if cfg.Injectors == 0 {
+		cfg.Injectors = 1
 	}
 	if cfg.MaxEndpoints == 0 {
 		cfg.MaxEndpoints = 1000
@@ -134,13 +137,20 @@ func (cfg Config) openLoop() bool {
 // Describe is the profile line printed for a run.
 func Describe(cfg Config) string {
 	if len(cfg.Stages) == 0 {
-		return describeStage(Stage{Rate: cfg.openLoop(), From: cfg.Rate, To: cfg.RateTo, ToSet: cfg.RateToSet})
+		return withInjectors(describeStage(Stage{Rate: cfg.openLoop(), From: cfg.Rate, To: cfg.RateTo, ToSet: cfg.RateToSet}), cfg.Injectors)
 	}
 	parts := make([]string, len(cfg.Stages))
 	for i, st := range cfg.Stages {
 		parts[i] = describeStage(st)
 	}
-	return strings.Join(parts, " then ")
+	return withInjectors(strings.Join(parts, " then "), cfg.Injectors)
+}
+
+func withInjectors(profile string, n int) string {
+	if n <= 1 {
+		return profile
+	}
+	return profile + " across " + strconv.Itoa(n) + " injectors"
 }
 
 func num(v float64) string {

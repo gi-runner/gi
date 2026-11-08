@@ -104,6 +104,7 @@ func newLoadCommand(code *int) *cobra.Command {
 	fs.DurationVar(&opt.duration, "duration", 0, "Measured window (default: feature setting or 10s)")
 	fs.DurationVar(&opt.warmup, "warmup", 0, "Unmeasured time before the window")
 	fs.IntVar(&opt.rps, "rps", 0, "HTTP requests per second cap; 0 means no cap")
+	fs.IntVar(&opt.injectors, "injectors", 0, "Processes that share this profile (default 1)")
 	fs.StringArrayVar(&opt.thresholds, "threshold", nil, "Pass condition, e.g. p95 < 200ms (repeatable)")
 	return cmd
 }

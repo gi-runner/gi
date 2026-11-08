@@ -41,6 +41,7 @@ type LoadSpec struct {
 	RPS          int
 	Warmup       time.Duration
 	Thresholds   []string
+	Injectors    int
 }
 
 type Scenario struct {
@@ -516,6 +517,11 @@ func applyLoadComment(spec *LoadSpec, raw string) error {
 			}
 		case "maxinflight":
 			spec.MaxInFlight, err = strconv.Atoi(raw)
+		case "injectors":
+			spec.Injectors, err = strconv.Atoi(raw)
+			if err == nil && spec.Injectors <= 0 {
+				err = errors.New("injectors must be positive")
+			}
 		default:
 			return fmt.Errorf("unknown gi-load setting %q", key)
 		}

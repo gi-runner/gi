@@ -112,7 +112,7 @@ func runLoad(args []string, opt loadCommandOptions) int {
 			VUs: f.Load.VUs, VUsTo: f.Load.VUsTo, UsersToSet: f.Load.UsersToSet,
 			Rate: f.Load.Rate, RateSet: f.Load.RateSet, RateTo: f.Load.RateTo, RateToSet: f.Load.RateToSet,
 			StageText: append([]string{}, f.Load.StageText...), MaxInFlight: f.Load.MaxInFlight, MaxEndpoints: f.Load.MaxEndpoints,
-			Duration: f.Load.Duration, Warmup: f.Load.Warmup, RPS: f.Load.RPS,
+			Duration: f.Load.Duration, Warmup: f.Load.Warmup, RPS: f.Load.RPS, Injectors: f.Load.Injectors,
 			Thresholds: append([]string{}, f.Load.Thresholds...),
 			Vars:       varmap, Tag: opt.tag, Timeout: opt.timeout, Env: opt.env, Suite: su,
 			Dial: adapters.Dial, NewPage: adapters.NewPage,
@@ -127,18 +127,44 @@ func runLoad(args []string, opt loadCommandOptions) int {
 			return 2
 		}
 		cfg.Thresholds = append(cfg.Thresholds, opt.thresholds...)
-		fmt.Printf("load %s  %s  duration=%s", f.Name, load.Describe(cfg), cfg.Duration)
-		if cfg.Warmup > 0 {
-			fmt.Printf("  warmup=%s", cfg.Warmup)
+		if cfg.Injectors > 1 && os.Getenv("GI_LOAD_SHARE") == "" {
+			for i := range cfg.Injectors {
+				if _, err := load.Share(cfg, i, cfg.Injectors); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					return 2
+				}
+			}
 		}
-		if cfg.RPS > 0 {
-			fmt.Printf("  rps=%d", cfg.RPS)
+		if err := applyShare(&cfg); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
 		}
-		fmt.Println()
-		res, err := load.Run(ctx, f, cfg)
+		quiet := cfg.PartPath != ""
+		if !quiet {
+			fmt.Printf("load %s  %s  duration=%s", f.Name, load.Describe(cfg), cfg.Duration)
+			if cfg.Warmup > 0 {
+				fmt.Printf("  warmup=%s", cfg.Warmup)
+			}
+			if cfg.RPS > 0 {
+				fmt.Printf("  rps=%d", cfg.RPS)
+			}
+			fmt.Println()
+		}
+		var res load.Result
+		if cfg.Injectors > 1 {
+			res, err = launchInjectors(ctx, cfg, path)
+		} else {
+			if err = waitLoadStart(ctx); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				return 1
+			}
+			res, err = load.Run(ctx, f, cfg)
+		}
 		loads = append(loads, res)
 		features = append(features, engine.FileResult{Path: f.Path, Name: f.Name})
-		printLoad(res)
+		if !quiet {
+			printLoad(res)
+		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			passed = false
@@ -296,6 +322,9 @@ func firstPath(files []string) string {
 }
 
 func discover(args []string) ([]string, error) {
+	if only := os.Getenv("GI_LOAD_FILE"); only != "" {
+		return []string{only}, nil
+	}
 	if len(args) == 0 {
 		for _, candidate := range []string{"features", "examples"} {
 			if st, err := os.Stat(candidate); err == nil && st.IsDir() {
@@ -350,6 +379,7 @@ type loadOptions struct {
 	stages           []string
 	maxIn, rps       int
 	maxEndpoints     int
+	injectors        int
 	duration, warmup time.Duration
 }
 
@@ -423,6 +453,12 @@ func applyLoadFlags(cfg *load.Config, opt loadOptions) error {
 	}
 	if opt.fs.Changed("rps") {
 		cfg.RPS = opt.rps
+	}
+	if opt.fs.Changed("injectors") {
+		if opt.injectors <= 0 {
+			return errors.New("injectors must be positive")
+		}
+		cfg.Injectors = opt.injectors
 	}
 	staged := len(cfg.StageText) > 0 || len(cfg.Stages) > 0
 	if !staged && !(cfg.RateSet || cfg.RateToSet || cfg.Rate > 0) && !cfg.UsersToSet && cfg.VUs < 1 {

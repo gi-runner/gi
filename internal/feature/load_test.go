@@ -15,6 +15,16 @@ Scenario: ok
 	if f.Load.VUs != 1 || !f.Load.UsersToSet || f.Load.VUsTo != 40 || f.Load.Duration.String() != "30s" || f.Load.Warmup.String() != "1s" || f.Load.RPS != 5 || len(f.Load.Thresholds) != 1 || f.Load.Thresholds[0] != "p95 < 200ms" {
 		t.Fatalf("%+v", f.Load)
 	}
+	injected, err := Parse("inject.feature", "# gi-load: vus=4 injectors=2\nFeature: inject\nScenario: ok\n* assert true\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if injected.Load.Injectors != 2 || injected.Load.VUs != 4 {
+		t.Fatalf("%+v", injected.Load)
+	}
+	if _, err := Parse("zero-injectors.feature", "# gi-load: injectors=0\nFeature: inject\nScenario: ok\n* assert true\n"); err == nil {
+		t.Fatal("accepted zero injectors")
+	}
 	named, err := Parse("named.feature", "# gi-load: threshold p95 < 200ms orders.feature:14 GET /orders\nFeature: named\nScenario: ok\n* assert true\n")
 	if err != nil {
 		t.Fatal(err)

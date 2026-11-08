@@ -45,6 +45,8 @@ type Config struct {
 	Tag          string
 	Timeout      time.Duration
 	Env          string
+	Injectors    int
+	PartPath     string
 	Suite        *suite.Suite
 	Dial         func(context.Context, string, map[string]any) (engine.Link, error)
 	NewPage      func(context.Context) (engine.Page, error)
@@ -481,29 +483,43 @@ func (s *session) finish(ctx context.Context) (Result, error) {
 	merged.RSS = s.rss
 	merged.Goroutines = s.goroutines
 	merged.Timeline = s.timeline(elapsed)
-	merged.Thresholds = evalThresholds(s.th, merged)
-	merged.Passed = merged.FailedIterations == 0
-	for _, th := range merged.Thresholds {
-		if !th.Passed {
-			merged.Passed = false
+	applyVerdict(&merged, s.th, s.cfg.Duration)
+	var runErr error
+	if err := ctx.Err(); err != nil {
+		runErr = err
+	}
+	if runErr == nil {
+		s.errMu.Lock()
+		runErr = s.runErr
+		s.errMu.Unlock()
+	}
+	if s.cfg.PartPath != "" {
+		snap := s.snapshot(merged)
+		if runErr != nil {
+			snap.Err = runErr.Error()
+		}
+		if err := WriteSnapshot(s.cfg.PartPath, snap); err != nil {
+			return merged, err
 		}
 	}
-	// A run that made no requests did not prove anything.
-	if merged.Requests == 0 && s.cfg.Duration > 0 {
+	if runErr != nil {
 		merged.Passed = false
-	}
-	if err := ctx.Err(); err != nil {
-		merged.Passed = false
-		return merged, err
-	}
-	s.errMu.Lock()
-	err := s.runErr
-	s.errMu.Unlock()
-	if err != nil {
-		merged.Passed = false
-		return merged, err
+		return merged, runErr
 	}
 	return merged, nil
+}
+
+func applyVerdict(res *Result, ths []threshold, duration time.Duration) {
+	res.Thresholds = evalThresholds(ths, *res)
+	res.Passed = res.FailedIterations == 0
+	for _, th := range res.Thresholds {
+		if !th.Passed {
+			res.Passed = false
+		}
+	}
+	if res.Requests == 0 && duration > 0 {
+		res.Passed = false
+	}
 }
 
 const timelineSlots = 30
@@ -593,34 +609,50 @@ func (l *collector) keep(res engine.FileResult) {
 	}
 }
 
-func merge(locals []*collector, elapsed time.Duration) Result {
-	by := map[string]*hist{}
-	errN := map[string]int64{}
-	var all hist
-	var sched hist
-	var iters, transport int64
-	var failures []engine.ScenarioResult
+type folded struct {
+	all, sched       hist
+	by               map[string]*hist
+	errN             map[string]int64
+	slots            [timelineSlots]sampleSlot
+	iters, transport int64
+	failures         []engine.ScenarioResult
+}
+
+func fold(locals []*collector) folded {
+	out := folded{by: map[string]*hist{}, errN: map[string]int64{}}
 	for _, l := range locals {
 		if l == nil {
 			continue
 		}
-		iters += l.iters
-		transport += l.transport
-		all.merge(l.all)
-		sched.merge(l.sched)
+		l.mu.Lock()
+		out.iters += l.iters
+		out.transport += l.transport
+		out.all.merge(l.all)
+		out.sched.merge(l.sched)
 		for k, s := range l.samples {
-			h := by[k]
+			h := out.by[k]
 			if h == nil {
 				h = &hist{}
-				by[k] = h
+				out.by[k] = h
 			}
 			h.merge(*s)
 		}
 		for k, n := range l.errors {
-			errN[k] += n
+			out.errN[k] += n
 		}
-		failures = append(failures, l.failures...)
+		for b, slot := range l.slots {
+			out.slots[b].lat.merge(slot.lat)
+			out.slots[b].errN += slot.errN
+		}
+		out.failures = append(out.failures, l.failures...)
+		l.mu.Unlock()
 	}
+	return out
+}
+
+func merge(locals []*collector, elapsed time.Duration) Result {
+	got := fold(locals)
+	all, sched, by, errN, iters, transport, failures := got.all, got.sched, got.by, got.errN, got.iters, got.transport, got.failures
 	sec := elapsed.Seconds()
 	if sec <= 0 {
 		sec = 1

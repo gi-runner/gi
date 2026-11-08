@@ -120,6 +120,30 @@ Scenario: unique path
 	}
 }
 
+func TestLoadInjectorsSplitTheProfile(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	dir := t.TempDir()
+	featurePath := filepath.Join(dir, "users.feature")
+	source := "Feature: injectors\nScenario: get\n* url baseUrl\n* method get\n* status 200\n"
+	if err := os.WriteFile(featurePath, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out := runCLI(t, "load", featurePath, "--vus", "2", "--duration", "400ms", "--injectors", "2", "--var", "baseUrl="+server.URL)
+	if code != 0 || !strings.Contains(out, "across 2 injectors") || strings.Count(out, "\nload ")+strings.Count(out, "load ") == 0 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	if strings.Count(out, "load ") != 1 {
+		t.Fatalf("injectors printed their own summaries:\n%s", out)
+	}
+	code, out = runCLI(t, "load", featurePath, "--vus", "1", "--duration", "1s", "--injectors", "2")
+	if code != 2 || !strings.Contains(out, "injector 2 of 2") {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+}
+
 func TestCommandHelpVersionAndUsage(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
