@@ -12,8 +12,15 @@ Scenario: ok
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.Load.VUs != 1 || !f.Load.UsersToSet || f.Load.VUsTo != 40 || f.Load.Duration.String() != "30s" || f.Load.Warmup.String() != "1s" || f.Load.RPS != 5 || len(f.Load.Thresholds) != 1 {
+	if f.Load.VUs != 1 || !f.Load.UsersToSet || f.Load.VUsTo != 40 || f.Load.Duration.String() != "30s" || f.Load.Warmup.String() != "1s" || f.Load.RPS != 5 || len(f.Load.Thresholds) != 1 || f.Load.Thresholds[0] != "p95 < 200ms" {
 		t.Fatalf("%+v", f.Load)
+	}
+	named, err := Parse("named.feature", "# gi-load: threshold p95 < 200ms orders.feature:14 GET /orders\nFeature: named\nScenario: ok\n* assert true\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(named.Load.Thresholds) != 1 || named.Load.Thresholds[0] != "p95 < 200ms orders.feature:14 GET /orders" {
+		t.Fatalf("%+v", named.Load)
 	}
 	f, err = Parse("rate.feature", "# gi-load: rate=10 rateTo=200 duration=5s\nFeature: rate\nScenario: ok\n* assert true\n")
 	if err != nil {

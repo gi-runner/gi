@@ -110,6 +110,8 @@ A threshold is a pass condition, such as `--threshold 'p95 < 200ms'`. All config
 
 Operators are `<`, `>`, `<=`, and `>=`. A failed threshold fails the run. Thresholds reject negative and non-finite values. JUnit records failed iterations even when all configured thresholds pass.
 
+Name a call site after the value to judge that call alone: `p95 < 200ms users.feature:14 GET /users/{id}`. On a call site, `errorRate` is transport errors divided by requests to that call, and `rps` is that call's rate. `schedP95`, `missed`, and `late` stay on the whole run. A named call that received no requests fails the threshold.
+
 ??? note "Percentile precision"
 
     Percentiles use a bounded histogram with 32 buckets per power of two. The reported upper edge is at most 3.125% above the nearest-rank value (exact below 32 ns), capped by the slowest sample. This makes latency thresholds fail closed.

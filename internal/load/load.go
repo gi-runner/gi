@@ -16,6 +16,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/gi-runner/gi/internal/engine"
 	"github.com/gi-runner/gi/internal/feature"
@@ -654,6 +655,7 @@ type threshold struct {
 	value  float64
 	unit   string
 	text   string
+	name   string
 }
 
 // ParseThresholds parses expressions such as "p95 < 200ms" and "errorRate < 1%".
@@ -671,11 +673,13 @@ func ParseThresholds(in []string) ([]threshold, error) {
 
 func parseThreshold(raw string) (threshold, error) {
 	text := strings.TrimSpace(raw)
-	fields := strings.Fields(text)
-	if len(fields) != 3 {
+	metric, rest, ok := cutToken(text)
+	op, rest, okOp := cutToken(rest)
+	rhs, name, okVal := cutToken(rest)
+	if !ok || !okOp || !okVal {
 		return threshold{}, fmt.Errorf("threshold %q must look like: p95 < 200ms", raw)
 	}
-	metric, op, rhs := fields[0], fields[1], fields[2]
+	name = strings.TrimSpace(name)
 	switch op {
 	case "<", ">", "<=", ">=":
 	default:
@@ -687,6 +691,9 @@ func parseThreshold(raw string) (threshold, error) {
 		"missed", "late":
 	default:
 		return threshold{}, fmt.Errorf("unknown threshold metric %q", metric)
+	}
+	if name != "" && runMetric(metric) {
+		return threshold{}, fmt.Errorf("threshold %q applies to the whole run", raw)
 	}
 	unit := ""
 	var value float64
@@ -727,7 +734,28 @@ func parseThreshold(raw string) (threshold, error) {
 	if metric == "errorRate" && value > 1 {
 		return threshold{}, fmt.Errorf("threshold %q errorRate must be between 0 and 100%%", raw)
 	}
-	return threshold{metric: metric, op: op, value: value, unit: unit, text: text}, nil
+	return threshold{metric: metric, op: op, value: value, unit: unit, text: text, name: name}, nil
+}
+
+func cutToken(s string) (token, rest string, ok bool) {
+	s = strings.TrimLeftFunc(s, unicode.IsSpace)
+	if s == "" {
+		return "", "", false
+	}
+	i := strings.IndexFunc(s, unicode.IsSpace)
+	if i < 0 {
+		return s, "", true
+	}
+	return s[:i], s[i+1:], true
+}
+
+func runMetric(metric string) bool {
+	switch metric {
+	case "schedP50", "schedP95", "schedP99", "schedMean", "schedMin", "schedMax", "missed", "late":
+		return true
+	default:
+		return false
+	}
 }
 
 func evalThresholds(ths []threshold, res Result) []Threshold {
@@ -742,48 +770,81 @@ func evalThresholds(ths []threshold, res Result) []Threshold {
 	}
 	out := make([]Threshold, 0, len(ths))
 	for _, th := range ths {
-		actual := 0.0
-		shown := ""
-		switch th.metric {
-		case "p50":
-			actual = float64(res.Overall.P50)
-			shown = res.Overall.P50.String()
-		case "p95":
-			actual = float64(res.Overall.P95)
-			shown = res.Overall.P95.String()
-		case "p99":
-			actual = float64(res.Overall.P99)
-			shown = res.Overall.P99.String()
-		case "mean":
-			actual = float64(res.Overall.Mean)
-			shown = res.Overall.Mean.String()
-		case "min":
-			actual = float64(res.Overall.Min)
-			shown = res.Overall.Min.String()
-		case "max":
-			actual = float64(res.Overall.Max)
-			shown = res.Overall.Max.String()
-		case "schedP50", "schedP95", "schedP99", "schedMean", "schedMin", "schedMax":
-			d := schedStat(res.Scheduled, th.metric)
-			actual = float64(d)
-			shown = d.String()
-		case "errorRate":
-			actual = errRate
-			shown = fmt.Sprintf("%.2f%%", errRate*100)
-		case "rps":
-			actual = rps
-			shown = fmt.Sprintf("%.1f", rps)
-		case "missed":
-			actual = float64(res.MissedStarts)
-			shown = strconv.FormatInt(res.MissedStarts, 10)
-		case "late":
-			actual = float64(res.LateStarts)
-			shown = strconv.FormatInt(res.LateStarts, 10)
+		actual, shown, found := th.measure(res, rps, errRate)
+		if !found {
+			out = append(out, Threshold{Text: th.text, Passed: false, Actual: "absent"})
+			continue
 		}
-		ok := compare(actual, th.op, th.value)
-		out = append(out, Threshold{Text: th.text, Passed: ok, Actual: shown})
+		out = append(out, Threshold{Text: th.text, Passed: compare(actual, th.op, th.value), Actual: shown})
 	}
 	return out
+}
+
+func (th threshold) measure(res Result, rps, errRate float64) (float64, string, bool) {
+	if th.name == "" {
+		actual, shown := runMeasure(th.metric, res, rps, errRate)
+		return actual, shown, true
+	}
+	for _, ep := range res.Endpoints {
+		if ep.Name != th.name {
+			continue
+		}
+		actual, shown := callMeasure(th.metric, ep)
+		return actual, shown, true
+	}
+	return 0, "", false
+}
+
+func runMeasure(metric string, res Result, rps, errRate float64) (float64, string) {
+	if d, ok := durationOf(res.Overall, metric); ok {
+		return float64(d), d.String()
+	}
+	switch metric {
+	case "schedP50", "schedP95", "schedP99", "schedMean", "schedMin", "schedMax":
+		d := schedStat(res.Scheduled, metric)
+		return float64(d), d.String()
+	case "errorRate":
+		return errRate, fmt.Sprintf("%.2f%%", errRate*100)
+	case "rps":
+		return rps, fmt.Sprintf("%.1f", rps)
+	case "missed":
+		return float64(res.MissedStarts), strconv.FormatInt(res.MissedStarts, 10)
+	default:
+		return float64(res.LateStarts), strconv.FormatInt(res.LateStarts, 10)
+	}
+}
+
+func callMeasure(metric string, ep Endpoint) (float64, string) {
+	if d, ok := durationOf(ep.Stats, metric); ok {
+		return float64(d), d.String()
+	}
+	if metric == "rps" {
+		return ep.RPS, fmt.Sprintf("%.1f", ep.RPS)
+	}
+	rate := 0.0
+	if ep.Count > 0 {
+		rate = float64(ep.Errors) / float64(ep.Count)
+	}
+	return rate, fmt.Sprintf("%.2f%%", rate*100)
+}
+
+func durationOf(st Stats, metric string) (time.Duration, bool) {
+	switch metric {
+	case "p50":
+		return st.P50, true
+	case "p95":
+		return st.P95, true
+	case "p99":
+		return st.P99, true
+	case "mean":
+		return st.Mean, true
+	case "min":
+		return st.Min, true
+	case "max":
+		return st.Max, true
+	default:
+		return 0, false
+	}
 }
 
 func schedStat(st Stats, metric string) time.Duration {
