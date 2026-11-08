@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -27,6 +28,24 @@ func endpointName(method, raw string) string {
 	p = uuidPath.ReplaceAllString(p, "{id}")
 	p = numPath.ReplaceAllString(p, "/{id}")
 	return strings.ToUpper(method) + " " + p
+}
+
+func callFile(e *exec) string {
+	if e.file == nil || e.file.Path == "" {
+		return ""
+	}
+	return filepath.Base(e.file.Path)
+}
+
+func callName(file string, line int, method, raw string) string {
+	name := endpointName(method, raw)
+	if file == "" && line <= 0 {
+		return name
+	}
+	if line > 0 {
+		return fmt.Sprintf("%s:%d %s", file, line, name)
+	}
+	return file + " " + name
 }
 
 func (e *exec) method(ctx context.Context, name string, sr *StepResult) error {
@@ -156,7 +175,7 @@ func (e *exec) method(ctx context.Context, name string, sr *StepResult) error {
 			Duration:       reply.Duration,
 			RequestHeaders: flattenHeader(headers),
 			RequestBody:    value.Truncate(string(body), 32<<10),
-			Endpoint:       endpointName(method, full),
+			Endpoint:       callName(callFile(e), sr.Line, method, full),
 		}
 		sr.HTTP = exch
 		if err != nil {

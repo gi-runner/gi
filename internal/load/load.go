@@ -73,6 +73,15 @@ type Result struct {
 	CPU              time.Duration
 	RSS              uint64
 	Goroutines       int
+	Timeline         []Slot
+}
+
+type Slot struct {
+	Offset   time.Duration
+	Requests int64
+	Errors   int64
+	Mean     time.Duration
+	Users    int
 }
 
 type Endpoint struct {
@@ -179,6 +188,7 @@ type session struct {
 	collectors []collector
 	endpoints  endpointNames
 	metricSeed maphash.Seed
+	userPeak   [timelineSlots]atomic.Uint64
 }
 
 type userSlot struct {
@@ -407,6 +417,7 @@ func (s *session) watch(ctx context.Context) {
 	memory := []metrics.Sample{{Name: "/memory/classes/heap/objects:bytes"}}
 	sample := func() {
 		peakG = max(peakG, runtime.NumGoroutine())
+		s.noteUsers()
 		// ReadMemStats stops the world; resource sampling must not pause arrivals.
 		metrics.Read(memory)
 		if memory[0].Value.Kind() == metrics.KindUint64 {
@@ -467,6 +478,7 @@ func (s *session) finish(ctx context.Context) (Result, error) {
 	merged.CPU = s.cpu
 	merged.RSS = s.rss
 	merged.Goroutines = s.goroutines
+	merged.Timeline = s.timeline(elapsed)
 	merged.Thresholds = evalThresholds(s.th, merged)
 	merged.Passed = merged.FailedIterations == 0
 	for _, th := range merged.Thresholds {
@@ -492,10 +504,18 @@ func (s *session) finish(ctx context.Context) (Result, error) {
 	return merged, nil
 }
 
+const timelineSlots = 30
+
+type sampleSlot struct {
+	n, errN int64
+	sum     float64
+}
+
 type collector struct {
 	mu        sync.Mutex
 	samples   map[string]*hist
 	errors    map[string]int64
+	slots     [timelineSlots]sampleSlot
 	all       hist
 	sched     hist
 	iters     int64
@@ -531,6 +551,19 @@ func (l *collector) add(ex engine.Exchange) {
 		l.errors[ex.Endpoint]++
 		l.transport++
 	}
+}
+
+func (l *collector) note(slot int, ex engine.Exchange) {
+	if slot < 0 || slot >= timelineSlots {
+		return
+	}
+	l.mu.Lock()
+	l.slots[slot].n++
+	l.slots[slot].sum += float64(ex.Duration)
+	if ex.Error != "" {
+		l.slots[slot].errN++
+	}
+	l.mu.Unlock()
 }
 
 func (l *collector) addSched(d time.Duration) {

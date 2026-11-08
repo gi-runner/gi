@@ -90,7 +90,9 @@ Login once in `@setup`, then read it with `gi.setupOnce()`. A login inside the s
 
 ## Metrics
 
-Each HTTP call is stored under a path template. UUIDs and numeric segments collapse to `{id}`, so `GET /users/550e8400-e29b-41d4-a716-446655440000` becomes `GET /users/{id}`.
+Each HTTP call is stored under its feature file, line, and path template. UUIDs and numeric segments collapse to `{id}`, so `users.feature:14 GET /users/550e8400-e29b-41d4-a716-446655440000` becomes `users.feature:14 GET /users/{id}`. The same path on another line is its own row.
+
+The measured window is split into 30 slices. Each slice reports the requests in it, transport errors, mean HTTP latency, and the most users in flight. The HTML and JSON reports include the slices.
 
 By default, a run keeps 1,000 named endpoints. Set `--max-endpoints 2000` or `# gi-load: maxEndpoints=2000` to change the limit. Further paths aggregate under `[other endpoints]`; counts, errors, and overall latency still include every request. Reports show the number of requests aggregated.
 

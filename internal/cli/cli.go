@@ -266,7 +266,7 @@ func printLoad(res load.Result) {
 		fmt.Printf("  endpoints:  %d requests aggregated into %s (limit %d)\n", res.EndpointOverflow, "[other endpoints]", res.EndpointLimit)
 	}
 	for _, ep := range res.Endpoints {
-		fmt.Printf("  %-22s  n=%-6d p95=%s\n", ep.Name, ep.Count, ep.Stats.P95.Round(time.Microsecond))
+		fmt.Printf("  %s  n=%d  p95=%s\n", ep.Name, ep.Count, ep.Stats.P95.Round(time.Microsecond))
 	}
 	for _, th := range res.Thresholds {
 		mark := "pass"

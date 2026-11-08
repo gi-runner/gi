@@ -209,33 +209,42 @@ type httpView struct {
 }
 
 type loadView struct {
-	Profile          string   `json:"profile,omitempty"`
-	Open             bool     `json:"open,omitempty"`
-	VUs              int      `json:"vus"`
-	Iterations       int64    `json:"iterations"`
-	FailedIterations int64    `json:"failedIterations"`
-	Requests         int64    `json:"requests"`
-	TransportErrors  int64    `json:"transportErrors"`
-	EndpointLimit    int      `json:"endpointLimit"`
-	EndpointOverflow int64    `json:"endpointOverflow,omitempty"`
-	ElapsedMS        float64  `json:"elapsedMs"`
-	RPS              float64  `json:"rps"`
-	Passed           bool     `json:"passed"`
-	P50              string   `json:"p50"`
-	P95              string   `json:"p95"`
-	P99              string   `json:"p99"`
-	Mean             string   `json:"mean"`
-	Min              string   `json:"min"`
-	Max              string   `json:"max"`
-	SchedP95         string   `json:"schedP95,omitempty"`
-	MissedStarts     int64    `json:"missedStarts,omitempty"`
-	LateStarts       int64    `json:"lateStarts,omitempty"`
-	CPUMS            float64  `json:"cpuMs,omitempty"`
-	RSS              uint64   `json:"rss,omitempty"`
-	Goroutines       int      `json:"goroutines,omitempty"`
-	Endpoints        []epView `json:"endpoints"`
-	Thresholds       []thView `json:"thresholds"`
-	Failures         []scView `json:"failures,omitempty"`
+	Profile          string     `json:"profile,omitempty"`
+	Open             bool       `json:"open,omitempty"`
+	VUs              int        `json:"vus"`
+	Iterations       int64      `json:"iterations"`
+	FailedIterations int64      `json:"failedIterations"`
+	Requests         int64      `json:"requests"`
+	TransportErrors  int64      `json:"transportErrors"`
+	EndpointLimit    int        `json:"endpointLimit"`
+	EndpointOverflow int64      `json:"endpointOverflow,omitempty"`
+	ElapsedMS        float64    `json:"elapsedMs"`
+	RPS              float64    `json:"rps"`
+	Passed           bool       `json:"passed"`
+	P50              string     `json:"p50"`
+	P95              string     `json:"p95"`
+	P99              string     `json:"p99"`
+	Mean             string     `json:"mean"`
+	Min              string     `json:"min"`
+	Max              string     `json:"max"`
+	SchedP95         string     `json:"schedP95,omitempty"`
+	MissedStarts     int64      `json:"missedStarts,omitempty"`
+	LateStarts       int64      `json:"lateStarts,omitempty"`
+	CPUMS            float64    `json:"cpuMs,omitempty"`
+	RSS              uint64     `json:"rss,omitempty"`
+	Goroutines       int        `json:"goroutines,omitempty"`
+	Timeline         []slotView `json:"timeline,omitempty"`
+	Endpoints        []epView   `json:"endpoints"`
+	Thresholds       []thView   `json:"thresholds"`
+	Failures         []scView   `json:"failures,omitempty"`
+}
+
+type slotView struct {
+	OffsetMS float64 `json:"offsetMs"`
+	Requests int64   `json:"requests"`
+	Errors   int64   `json:"errors"`
+	Mean     string  `json:"mean"`
+	Users    int     `json:"users"`
 }
 
 type epView struct {
@@ -453,6 +462,15 @@ func loadViewOf(ld load.Result) loadView {
 		RSS:              ld.RSS,
 		Goroutines:       ld.Goroutines,
 	}
+	for _, slot := range ld.Timeline {
+		lv.Timeline = append(lv.Timeline, slotView{
+			OffsetMS: ms(slot.Offset),
+			Requests: slot.Requests,
+			Errors:   slot.Errors,
+			Mean:     slot.Mean.String(),
+			Users:    slot.Users,
+		})
+	}
 	for _, ep := range ld.Endpoints {
 		lv.Endpoints = append(lv.Endpoints, epView{
 			Name: ep.Name, Count: ep.Count, Errors: ep.Errors, RPS: ep.RPS,
@@ -552,6 +570,13 @@ const htmlPage = `<!DOCTYPE html>
   <table>
     <tr><th>check</th><th>actual</th><th></th></tr>
     {{range .Thresholds}}<tr><td><code>{{.Text}}</code></td><td>{{.Actual}}</td><td class="{{if .Passed}}ok{{else}}bad{{end}}">{{if .Passed}}pass{{else}}fail{{end}}</td></tr>{{end}}
+  </table>
+  {{end}}
+  {{if .Timeline}}
+  <h2>Across the run</h2>
+  <table>
+    <tr><th>offset</th><th>users</th><th>requests</th><th>errors</th><th>mean</th></tr>
+    {{range .Timeline}}<tr><td>{{fmtms .OffsetMS}}</td><td>{{.Users}}</td><td>{{.Requests}}</td><td>{{.Errors}}</td><td>{{.Mean}}</td></tr>{{end}}
   </table>
   {{end}}
   {{if .Endpoints}}
