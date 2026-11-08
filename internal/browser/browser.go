@@ -284,65 +284,55 @@ func (p *page) openWindow(ctx context.Context, url string) error {
 	return nil
 }
 
+// Window indexes are the tabs this page still owns. A target Chrome has not
+// finished closing is not one of them.
 func (p *page) windows(ctx context.Context) ([]any, error) {
 	infos, err := p.targets(ctx)
 	if err != nil {
 		return nil, err
 	}
-	var out []any
-	index := 0
+	byID := make(map[target.ID]*target.Info, len(infos))
 	for _, info := range infos {
-		if info.Type != "page" {
-			continue
+		if info.Type == "page" {
+			byID[info.TargetID] = info
 		}
-		out = append(out, map[string]any{
-			"index": index, "url": info.URL, "title": info.Title, "id": string(info.TargetID),
-		})
-		index++
+	}
+	p.mu.Lock()
+	tabs := slices.Clone(p.tabs)
+	p.mu.Unlock()
+	out := make([]any, 0, len(tabs))
+	for i, t := range tabs {
+		item := map[string]any{"index": i, "url": "", "title": "", "id": string(t.id)}
+		if info := byID[t.id]; info != nil {
+			item["url"] = info.URL
+			item["title"] = info.Title
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }
 
 func (p *page) useWindow(ctx context.Context, n int) error {
-	infos, err := p.targets(ctx)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	var pages []*target.Info
-	for _, info := range infos {
-		if info.Type == "page" {
-			pages = append(pages, info)
-		}
-	}
-	if n < 0 || n >= len(pages) {
+	p.mu.Lock()
+	if n < 0 || n >= len(p.tabs) {
+		p.mu.Unlock()
 		return errWindow(n)
 	}
-	id := pages[n].TargetID
-	if existing := p.find(id); existing != nil {
-		p.mu.Lock()
-		p.active = existing
-		p.mu.Unlock()
-		return nil
-	}
-	tabCtx, tabCancel := chromedp.NewContext(p.root, chromedp.WithTargetID(id), chromedp.WithDetachOnCancel())
-	next := &tab{ctx: tabCtx, cancel: tabCancel, id: id, rules: p.activeTab().rulesCopy()}
-	if err := next.init(ctx); err != nil {
-		drop(tabCancel)
-		return err
-	}
-	if err := p.arm(ctx, next); err != nil {
-		drop(tabCancel)
-		return err
-	}
-	err = next.run(ctx, func(c context.Context) error {
+	next := p.tabs[n]
+	p.mu.Unlock()
+	err := next.run(ctx, func(c context.Context) error {
 		_, err := chromedp.Run(c, chromedp.Title())
 		return err
 	})
 	if err != nil {
-		drop(tabCancel)
 		return err
 	}
-	p.adopt(next)
+	p.mu.Lock()
+	p.active = next
+	p.mu.Unlock()
 	return nil
 }
 
@@ -400,20 +390,6 @@ func (p *page) targets(ctx context.Context) ([]*target.Info, error) {
 		return err
 	})
 	return infos, err
-}
-
-func (p *page) find(id target.ID) *tab {
-	if id == "" {
-		return nil
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	for _, t := range p.tabs {
-		if t.id == id {
-			return t
-		}
-	}
-	return nil
 }
 
 func targetOf(ctx context.Context) target.ID {
