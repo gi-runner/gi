@@ -17,6 +17,7 @@ import (
 
 // Helpers use the scenario's JS values directly so callbacks and mutations retain
 // JavaScript semantics instead of round-tripping through exported Go functions.
+//
 //go:embed helpers.js
 var helpers string
 
