@@ -22,24 +22,26 @@ import (
 )
 
 type Options struct {
-	Vars           map[string]any
-	HTTP           Sender
-	Stdout         io.Writer
-	Jobs           int
-	Tag            string
-	LoadMode       bool
-	Mock           bool
-	VU             int
-	Iter           int
-	Timeout        time.Duration
-	OnRequest      func(Exchange)
-	BeforeRequest  func(context.Context) error
-	Prepare        func(*script.VM)
-	Dial           func(context.Context, string, map[string]any) (Link, error)
-	NewPage        func(context.Context, DriverConfig) (Page, error)
-	StartMock      func(context.Context, MockSpec) (script.Server, error)
-	Steps          []StepDef
-	Helpers        map[string]func([]any) (any, error)
+	Vars          map[string]any
+	HTTP          Sender
+	Stdout        io.Writer
+	Jobs          int
+	Tag           string
+	LoadMode      bool
+	Mock          bool
+	VU            int
+	Iter          int
+	Timeout       time.Duration
+	OnRequest     func(Exchange)
+	BeforeRequest func(context.Context) error
+	Prepare       func(*script.VM)
+	Dial          func(context.Context, string, map[string]any) (Link, error)
+	NewPage       func(context.Context, DriverConfig) (Page, error)
+	StartMock     func(context.Context, MockSpec) (script.Server, error)
+	Steps         []StepDef
+	Helpers       map[string]func([]any) (any, error)
+	// Tokens shares one OAuth cache across the scenarios and iterations of this run.
+	Tokens         *TokenCache
 	Depth          int
 	Env            string
 	Suite          *suite.Suite
@@ -241,6 +243,9 @@ func failedFile(f *feature.File, err error) FileResult {
 // done, when set, is called once per file, one file at a time.
 func RunFiles(ctx context.Context, files []*feature.File, opt Options, done func(FileResult)) ([]FileResult, error) {
 	opt.Stdout = synchronizeWriter(opt.Stdout)
+	if opt.Tokens == nil {
+		opt.Tokens = &TokenCache{}
+	}
 	if opt.Suite == nil && len(files) > 0 {
 		opt.Suite = suite.Open(files[0].Path, opt.Env)
 	}
@@ -324,6 +329,9 @@ func parallel(n, count int, fn func(int)) {
 func RunFile(ctx context.Context, f *feature.File, opt Options) (FileResult, error) {
 	started := time.Now()
 	opt.Stdout = synchronizeWriter(opt.Stdout)
+	if opt.Tokens == nil {
+		opt.Tokens = &TokenCache{}
+	}
 	if opt.Suite == nil {
 		opt.Suite = suite.Open(f.Path, opt.Env)
 	}

@@ -79,9 +79,11 @@ The multipart `Content-Type`, including the boundary, is set on the request. A `
 * configure auth = { type: 'basic', username: 'ada', password: 'secret' }
 * configure auth = { type: 'bearer', token: token }
 * configure auth = { type: 'oauth2', accessTokenUrl: '/token', clientId: 'id', clientSecret: 'secret', scope: 'read' }
+* configure auth = { type: 'oauth2', grantType: 'password', accessTokenUrl: '/token', clientId: 'id', clientSecret: 'secret', username: 'ada', password: 'secret' }
+* configure auth = { type: 'oauth2', grantType: 'refresh_token', accessTokenUrl: '/token', clientId: 'id', clientSecret: 'secret', refreshToken: token.refresh_token }
 ```
 
-OAuth2 is the client-credentials grant. The first request of the scenario posts `grant_type`, `client_id`, `client_secret`, and `scope` to `accessTokenUrl`. A relative token URL is resolved from the request's scheme and host. The access token is cached for the rest of the scenario, including retries and called features. A non-2xx token response fails the step.
+OAuth2 posts `grant_type`, `client_id`, and `client_secret` to `accessTokenUrl`. `grantType` defaults to `client_credentials`. `password` also sends `username` and `password`. `refresh_token` sends `refreshToken`. A relative token URL is resolved from the request's scheme and host. A token response with `refresh_token` and `expires_in` is refreshed in place when it expires, one second early. The same client, grant, and user share one token across the scenarios of a `gi test` and across the iterations of a load profile. A non-2xx token response fails the step.
 
 ## Retry
 

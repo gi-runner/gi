@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/pflag"
@@ -141,6 +142,9 @@ func printProfile(name string, cfg load.Config) {
 	if cfg.RPS > 0 {
 		fmt.Printf("  rps=%d", cfg.RPS)
 	}
+	if cfg.Start > 0 {
+		fmt.Printf("  start=%s", cfg.Start)
+	}
 	fmt.Println()
 }
 
@@ -217,6 +221,7 @@ files:
 			fmt.Fprintln(os.Stderr, err)
 			return 2
 		}
+		items := make([]loadPlan, 0, len(plans))
 		for _, plan := range plans {
 			file := f
 			if plan.Name != "" || len(f.Profiles) > 0 {
@@ -231,41 +236,24 @@ files:
 				ext := filepath.Ext(snap)
 				snap = strings.TrimSuffix(snap, ext) + "-" + plan.Name + ext
 			}
-			progress := liveProgress(os.Stderr, label)
-			if metrics != nil {
-				progress = fanout(progress, metricStream(metrics, label))
-			}
-			if opt.metricsListen != "" {
-				prom.mu.Lock()
-				prom.name = label
-				prom.mu.Unlock()
-				progress = fanout(progress, prom.note)
+			planSuite := su
+			if len(plans) > 1 {
+				planSuite = suite.Open(f.Path, opt.env)
 			}
 			cfg, err := loadConfig(file, opt, load.Config{
-				Vars: varmap, Tag: opt.tag, Timeout: opt.timeout, Env: opt.env, Suite: su, Part: part,
-				Snapshot: snap, Progress: progress,
+				Vars: varmap, Tag: opt.tag, Timeout: opt.timeout, Env: opt.env, Suite: planSuite, Part: part,
+				Snapshot: snap,
 			})
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				return 2
 			}
-			printProfile(label, cfg)
-			res, err := load.Run(ctx, file, cfg)
-			clearProgress(os.Stderr, progress)
-			loads = append(loads, res)
-			features = append(features, engine.FileResult{Path: f.Path, Name: label})
-			printLoad(res)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				passed = false
-				if ctx.Err() != nil {
-					break files
-				}
-				continue
-			}
-			if !res.Passed {
-				passed = false
-			}
+			items = append(items, loadPlan{file: file, label: label, name: plan.Name, cfg: cfg})
+		}
+		var stopFile bool
+		loads, features, passed, stopFile = runPlans(ctx, f, items, metrics, prom, opt.metricsListen != "", loads, features, passed)
+		if stopFile {
+			break files
 		}
 	}
 	var last *load.Result
@@ -281,6 +269,126 @@ files:
 		return 1
 	}
 	return 0
+}
+
+type loadPlan struct {
+	file        *feature.File
+	label, name string
+	cfg         load.Config
+}
+
+func runPlans(ctx context.Context, f *feature.File, items []loadPlan, metrics io.Writer, prom *scrape, listen bool, loads []load.Result, features []engine.FileResult, passed bool) ([]load.Result, []engine.FileResult, bool, bool) {
+	if len(items) < 2 {
+		for _, item := range items {
+			printProfile(item.label, item.cfg)
+			res, err := runOnePlan(ctx, item, metrics, prom, listen, nil)
+			loads = append(loads, res)
+			features = append(features, engine.FileResult{Path: f.Path, Name: item.label})
+			if err != nil && res.Iterations == 0 && res.Requests == 0 {
+				fmt.Fprintln(os.Stderr, err)
+				return loads, features, false, ctx.Err() != nil
+			}
+			printLoad(res)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				passed = false
+				if ctx.Err() != nil {
+					return loads, features, passed, true
+				}
+				continue
+			}
+			if !res.Passed {
+				passed = false
+			}
+		}
+		return loads, features, passed, false
+	}
+	for _, item := range items {
+		printProfile(item.label, item.cfg)
+	}
+	out := metrics
+	if metrics != nil {
+		out = &lockWriter{w: metrics}
+	}
+	board := newProgressBoard(os.Stderr)
+	results := make([]struct {
+		res load.Result
+		err error
+	}, len(items))
+	var wg sync.WaitGroup
+	for i := range items {
+		wg.Go(func() {
+			results[i].res, results[i].err = runOnePlan(ctx, items[i], out, prom, listen, board)
+		})
+	}
+	wg.Wait()
+	board.clear()
+	stop := ctx.Err() != nil
+	for i, item := range items {
+		res, err := results[i].res, results[i].err
+		loads = append(loads, res)
+		features = append(features, engine.FileResult{Path: f.Path, Name: item.label})
+		if err != nil && res.Iterations == 0 && res.Requests == 0 {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", item.label, err)
+			passed = false
+			continue
+		}
+		fmt.Printf("load %s\n", item.label)
+		printLoad(res)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			passed = false
+			continue
+		}
+		if !res.Passed {
+			passed = false
+		}
+	}
+	return loads, features, passed, stop
+}
+
+func runOnePlan(ctx context.Context, item loadPlan, metrics io.Writer, prom *scrape, listen bool, board *progressBoard) (load.Result, error) {
+	if err := waitDelay(ctx, item.cfg.Start); err != nil {
+		return load.Result{Name: item.name}, err
+	}
+	var last int64
+	var progress func(load.Progress)
+	if board != nil {
+		progress = func(p load.Progress) {
+			board.set(item.label, fmt.Sprintf("%s / %s  users %d  requests %d  rps %d  failed %d",
+				p.Elapsed.Truncate(time.Second), p.Total.Truncate(time.Second), p.Users, p.Requests, p.Requests-last, p.Failed))
+			last = p.Requests
+		}
+	} else {
+		progress = liveProgress(os.Stderr, item.label)
+	}
+	if metrics != nil {
+		progress = fanout(progress, metricStream(metrics, item.label))
+	}
+	if listen {
+		progress = fanout(progress, func(p load.Progress) { prom.record(item.label, p) })
+	}
+	item.cfg.Progress = progress
+	res, err := load.Run(ctx, item.file, item.cfg)
+	if board == nil {
+		clearProgress(os.Stderr, progress)
+	}
+	res.Name = item.name
+	return res, err
+}
+
+func waitDelay(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func runMock(args []string, addr string) int {

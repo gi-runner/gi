@@ -62,11 +62,15 @@ func ExportLoadMetrics(ctx context.Context, endpoint string, results []load.Resu
 		if sec <= 0 {
 			sec = 1
 		}
+		var attrs []any
+		if res.Name != "" {
+			attrs = []any{attr("gi.profile", res.Name)}
+		}
 		metrics = append(metrics,
-			sum("gi.http.reqs", float64(res.Requests), when),
-			sum("gi.http.req_failed", float64(res.FailedIterations), when),
-			gauge("gi.http.req_rate", float64(res.Requests)/sec, when),
-			gauge("gi.http.p95", res.Overall.P95.Seconds(), when),
+			sum("gi.http.reqs", float64(res.Requests), when, attrs),
+			sum("gi.http.req_failed", float64(res.FailedIterations), when, attrs),
+			gauge("gi.http.req_rate", float64(res.Requests)/sec, when, attrs),
+			gauge("gi.http.p95", res.Overall.P95.Seconds(), when, attrs),
 		)
 	}
 	payload := map[string]any{"resourceMetrics": []any{map[string]any{
@@ -107,20 +111,24 @@ func metricsURL(endpoint string) string {
 	return strings.TrimRight(endpoint, "/") + "/v1/metrics"
 }
 
-func gauge(name string, v float64, when time.Time) map[string]any {
-	return map[string]any{"name": name, "gauge": map[string]any{"dataPoints": []any{point(v, when)}}}
+func gauge(name string, v float64, when time.Time, attrs []any) map[string]any {
+	return map[string]any{"name": name, "gauge": map[string]any{"dataPoints": []any{point(v, when, attrs)}}}
 }
 
-func sum(name string, v float64, when time.Time) map[string]any {
+func sum(name string, v float64, when time.Time, attrs []any) map[string]any {
 	return map[string]any{"name": name, "sum": map[string]any{
 		"aggregationTemporality": 2,
 		"isMonotonic":            true,
-		"dataPoints":             []any{point(v, when)},
+		"dataPoints":             []any{point(v, when, attrs)},
 	}}
 }
 
-func point(v float64, when time.Time) map[string]any {
-	return map[string]any{"asDouble": v, "timeUnixNano": strconv.FormatInt(when.UnixNano(), 10)}
+func point(v float64, when time.Time, attrs []any) map[string]any {
+	p := map[string]any{"asDouble": v, "timeUnixNano": strconv.FormatInt(when.UnixNano(), 10)}
+	if len(attrs) > 0 {
+		p["attributes"] = attrs
+	}
+	return p
 }
 
 func spansOf(doc Document) []any {

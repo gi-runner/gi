@@ -44,12 +44,14 @@ type Config struct {
 	StartMock func(context.Context, engine.MockSpec) (script.Server, error)
 	Steps     []engine.StepDef
 	Helpers   map[string]func([]any) (any, error)
+	Tokens    *engine.TokenCache
 }
 
 type Result struct {
 	Started          time.Time
 	Elapsed          time.Duration
 	Profile          string
+	Name             string
 	Open             bool
 	VUs              int
 	Iterations       int64
@@ -160,6 +162,10 @@ func Run(ctx context.Context, f *feature.File, cfg Config) (Result, error) {
 		end:      started.Add(pl.window()),
 		th:       thresholds,
 		stop:     stop,
+		tokens:   cfg.Tokens,
+	}
+	if s.tokens == nil {
+		s.tokens = &engine.TokenCache{}
 	}
 	if s.mix, err = newMix(f, engine.Options{LoadMode: true, Tag: cfg.Tag, Env: cfg.Env}); err != nil {
 		return Result{}, err
@@ -207,6 +213,7 @@ type session struct {
 	errMu      sync.Mutex
 	runErr     error
 	stop       context.CancelFunc
+	tokens     *engine.TokenCache
 	checked    atomic.Int64
 	collectors []collector
 	endpoints  endpointNames
@@ -382,6 +389,7 @@ func (s *session) once(runCtx, userCtx context.Context, lu *collector, due time.
 		StartMock: s.cfg.StartMock,
 		Steps:     s.cfg.Steps,
 		Helpers:   s.cfg.Helpers,
+		Tokens:    s.tokens,
 		Jobs:      1,
 		OnRequest: func(ex engine.Exchange) {
 			now := time.Now()
