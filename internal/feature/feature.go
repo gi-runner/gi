@@ -43,6 +43,7 @@ type LoadSpec struct {
 	Duration     time.Duration
 	RPS          int
 	Warmup       time.Duration
+	Start        time.Duration
 	Thresholds   []string
 }
 
@@ -646,7 +647,7 @@ func loadTagNames(tags []string) []string {
 
 func (spec LoadSpec) set() bool {
 	return spec.VUs > 0 || spec.UsersToSet || spec.RateSet || spec.Rate > 0 || spec.RateToSet ||
-		len(spec.StageText) > 0 || spec.Duration > 0 || spec.RPS > 0 || spec.Warmup > 0 ||
+		len(spec.StageText) > 0 || spec.Duration > 0 || spec.RPS > 0 || spec.Warmup > 0 || spec.Start > 0 ||
 		spec.MaxInFlight > 0 || spec.MaxEndpoints > 0 || len(spec.Thresholds) > 0
 }
 
@@ -700,6 +701,11 @@ func applyLoadComment(spec *LoadSpec, raw string) error {
 			spec.RateToSet = true
 		case "warmup":
 			spec.Warmup, err = time.ParseDuration(raw)
+		case "start":
+			spec.Start, err = time.ParseDuration(raw)
+			if err == nil && spec.Start < 0 {
+				err = errors.New("start must be nonnegative")
+			}
 		case "maxendpoints":
 			spec.MaxEndpoints, err = strconv.Atoi(raw)
 			if err == nil && spec.MaxEndpoints <= 0 {
@@ -734,7 +740,7 @@ func (spec LoadSpec) WithStages(text []string) LoadSpec {
 }
 
 func (spec LoadSpec) validate() error {
-	if spec.Warmup < 0 || spec.VUs < 0 || spec.VUsTo < 0 || spec.RPS < 0 || spec.Rate < 0 || spec.RateTo < 0 ||
+	if spec.Start < 0 || spec.Warmup < 0 || spec.VUs < 0 || spec.VUsTo < 0 || spec.RPS < 0 || spec.Rate < 0 || spec.RateTo < 0 ||
 		math.IsNaN(spec.Rate) || math.IsInf(spec.Rate, 0) || math.IsNaN(spec.RateTo) || math.IsInf(spec.RateTo, 0) {
 		return errors.New("gi-load values must be finite and nonnegative")
 	}

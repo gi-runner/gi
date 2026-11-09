@@ -1,6 +1,9 @@
 package feature
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestLoadComments(t *testing.T) {
 	f, err := Parse("load.feature", `# gi-load: vus=1 vusTo=40 duration=30s warmup=1s rps=5
@@ -61,7 +64,7 @@ func TestMalformedLoadSettingsDoNotFallBackToDefaults(t *testing.T) {
 
 func TestNamedLoadProfiles(t *testing.T) {
 	f, err := Parse("shop.feature", `# gi-load: name=soak vus=5 duration=30s
-# gi-load: name=spike rate=20 duration=5s
+# gi-load: name=spike rate=20 duration=5s start=10s
 Feature: shop
 @load=spike
 Scenario: checkout
@@ -72,7 +75,7 @@ Scenario: browse
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(f.Profiles) != 2 || f.Profiles[0].Name != "soak" || f.Profiles[0].Load.VUs != 5 || f.Profiles[1].Load.Rate != 20 {
+	if len(f.Profiles) != 2 || f.Profiles[0].Name != "soak" || f.Profiles[0].Load.VUs != 5 || f.Profiles[1].Load.Rate != 20 || f.Profiles[1].Load.Start != 10*time.Second {
 		t.Fatalf("%+v", f.Profiles)
 	}
 	spike := f.ForProfile("spike")

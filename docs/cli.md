@@ -58,7 +58,7 @@ Flags may follow the file path. Use `--` before paths beginning with `-`. `gi te
 | `--start-at 2026-11-08T16:00:00Z` | Wait until this RFC 3339 time, so every part starts together. |
 | `--metrics live.jsonl` | Stream one JSON line per second: `time`, `feature`, `elapsed` seconds, `users`, cumulative `requests` and `failed`, and that second's `rps`. |
 | `--metrics-listen :9090` | Serve Prometheus text at `/metrics` for the length of the run. |
-| `--profile spike` | Run one named `gi-load` profile. Omit it to run every profile in the file, one after another. |
+| `--profile spike` | Run one named `gi-load` profile. Omit it and every profile in the file starts together. |
 
 `gi load merge part*.json` joins the snapshots of every part, prints the summary, and judges the recorded thresholds plus any `--threshold`. It accepts `--report`, `--json`, and `--junit`, and fails when a part is missing, repeated, or from another profile.
 

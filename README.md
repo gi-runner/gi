@@ -26,6 +26,15 @@ gi demo
 
 `gi demo` checks a greeting, then runs that same check under load. [Install](https://gi-runner.github.io/gi/install/) also covers the shell script, Go, and editors.
 
+|  | gi | Karate | godog | k6 |
+| --- | --- | --- | --- | --- |
+| API test written in the feature file | yes | yes | Go steps | a script |
+| That same file is the load test | yes | Gatling |  | a second script |
+| Install | one binary | a JVM | `go test` | one binary |
+| Local echo, 50 VU for 5s | about 27k rps, 65 MB |  |  | about 29.5k rps, 150 MB |
+
+gi is for a new API suite that should be both the functional test and the load test. A soak and a spike in one file run in the same window. godog fits suites whose steps call domain code. k6 fits a load platform. Karate fits a team staying on the JVM.
+
 For example, `examples/users.feature` creates a user and reads it back:
 
 ```gherkin

@@ -43,11 +43,11 @@ A user profile and a rate profile cannot be combined. Flags override the comment
 
 ### Named profiles
 
-`name=` starts another profile in the same file. `gi load` runs each profile to completion, then the next. `--profile spike` runs one. A scenario with no `@load` tag runs in every profile. `@load=spike` runs only in that profile.
+`name=` starts another profile in the same file. `gi load` starts every profile together, and each one keeps its own users, rate, failures, and thresholds. `start=` delays that profile from the shared start, so a spike can land on top of a soak. `--profile spike` runs one. A scenario with no `@load` tag runs in every profile. `@load=spike` runs only in that profile. Each profile has its own call-once cache, signals, and locks.
 
 ```gherkin
 # gi-load: name=soak vus=5 duration=30s
-# gi-load: name=spike rate=20 duration=5s
+# gi-load: name=spike rate=20 duration=5s start=10s
 
 Scenario: browse
   * method get

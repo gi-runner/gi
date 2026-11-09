@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -164,8 +165,9 @@ func TestLoadPartsMergeIntoOneRun(t *testing.T) {
 }
 
 func TestListenMetricsServesPrometheus(t *testing.T) {
-	s := &scrape{name: "shop"}
-	s.note(load.Progress{Users: 4, Requests: 20, Failed: 1})
+	s := &scrape{}
+	s.record("shop", load.Progress{Users: 4, Requests: 20, Failed: 1})
+	s.record("spike", load.Progress{Users: 8, Requests: 3, Failed: 0})
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	stop, bound, err := listenMetrics(ctx, "127.0.0.1:0", s)
@@ -187,7 +189,7 @@ func TestListenMetricsServesPrometheus(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := string(body)
-	for _, want := range []string{`gi_vus{feature="shop"} 4`, `gi_http_reqs{feature="shop"} 20`, `gi_http_req_failed{feature="shop"} 1`} {
+	for _, want := range []string{`gi_vus{feature="shop"} 4`, `gi_http_reqs{feature="shop"} 20`, `gi_http_req_failed{feature="shop"} 1`, `gi_vus{feature="spike"} 8`} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %s in\n%s", want, got)
 		}
@@ -278,5 +280,65 @@ Scenario: values survive parsing
 	code, out = runCLI(t, "test", "--jobs", "1", "--", name)
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, out)
+	}
+}
+
+func TestNamedProfilesShareOneWindow(t *testing.T) {
+	var mu sync.Mutex
+	times := map[string]struct {
+		first, last time.Time
+		n           int
+	}{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		h := times[r.URL.Path]
+		now := time.Now()
+		if h.n == 0 {
+			h.first = now
+		}
+		h.last = now
+		h.n++
+		times[r.URL.Path] = h
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "shop.feature")
+	source := `# gi-load: name=soak vus=2 duration=1200ms
+# gi-load: name=spike vus=2 duration=800ms start=400ms
+Feature: shop
+@load=soak
+Scenario: browse
+* url baseUrl
+* path 'soak'
+* method get
+* status 200
+@load=spike
+Scenario: checkout
+* url baseUrl
+* path 'spike'
+* method get
+* status 200
+`
+	if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out := runCLI(t, "load", path, "--var", "baseUrl="+srv.URL)
+	if code != 0 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	soak, spike := times["/soak"], times["/spike"]
+	if soak.n == 0 || spike.n == 0 {
+		t.Fatalf("requests soak=%d spike=%d", soak.n, spike.n)
+	}
+	gap := spike.first.Sub(soak.first)
+	if gap < 250*time.Millisecond || gap > 900*time.Millisecond {
+		t.Fatalf("spike started %s after soak", gap)
+	}
+	if !soak.last.After(spike.first) {
+		t.Fatalf("spike began after soak ended: soak %s-%s spike %s", soak.first, soak.last, spike.first)
 	}
 }

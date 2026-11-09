@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"os"
@@ -89,30 +90,49 @@ func metricStream(w io.Writer, name string) func(load.Progress) {
 }
 
 type scrape struct {
-	mu   sync.Mutex
+	mu      sync.Mutex
+	order   []string
+	samples map[string]scrapeSample
+}
+
+type scrapeSample struct {
 	p    load.Progress
 	rps  int64
 	last int64
-	name string
 }
 
-func (s *scrape) note(p load.Progress) {
+func (s *scrape) record(name string, p load.Progress) {
 	s.mu.Lock()
-	s.rps = p.Requests - s.last
-	s.last = p.Requests
-	s.p = p
-	s.mu.Unlock()
+	defer s.mu.Unlock()
+	if s.samples == nil {
+		s.samples = map[string]scrapeSample{}
+	}
+	if _, ok := s.samples[name]; !ok {
+		s.order = append(s.order, name)
+	}
+	cur := s.samples[name]
+	cur.rps = p.Requests - cur.last
+	cur.last = p.Requests
+	cur.p = p
+	s.samples[name] = cur
 }
 
 func (s *scrape) serve(w http.ResponseWriter, _ *http.Request) {
 	s.mu.Lock()
-	p, rps, name := s.p, s.rps, s.name
+	order := append([]string(nil), s.order...)
+	samples := maps.Clone(s.samples)
 	s.mu.Unlock()
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-	_, _ = fmt.Fprintf(w, "# HELP gi_vus Virtual users in flight.\n# TYPE gi_vus gauge\ngi_vus{feature=%q} %d\n", name, p.Users)
-	_, _ = fmt.Fprintf(w, "# HELP gi_http_reqs HTTP requests completed.\n# TYPE gi_http_reqs counter\ngi_http_reqs{feature=%q} %d\n", name, p.Requests)
-	_, _ = fmt.Fprintf(w, "# HELP gi_http_req_failed Failed iterations.\n# TYPE gi_http_req_failed counter\ngi_http_req_failed{feature=%q} %d\n", name, p.Failed)
-	_, _ = fmt.Fprintf(w, "# HELP gi_http_req_rate Requests in the last second.\n# TYPE gi_http_req_rate gauge\ngi_http_req_rate{feature=%q} %d\n", name, rps)
+	write := func(help, kind, metric string, value func(scrapeSample) int64) {
+		_, _ = fmt.Fprintf(w, "# HELP %s %s\n# TYPE %s %s\n", metric, help, metric, kind)
+		for _, name := range order {
+			_, _ = fmt.Fprintf(w, "%s{feature=%q} %d\n", metric, name, value(samples[name]))
+		}
+	}
+	write("Virtual users in flight.", "gauge", "gi_vus", func(s scrapeSample) int64 { return int64(s.p.Users) })
+	write("HTTP requests completed.", "counter", "gi_http_reqs", func(s scrapeSample) int64 { return s.p.Requests })
+	write("Failed iterations.", "counter", "gi_http_req_failed", func(s scrapeSample) int64 { return s.p.Failed })
+	write("Requests in the last second.", "gauge", "gi_http_req_rate", func(s scrapeSample) int64 { return s.rps })
 }
 
 func listenMetrics(ctx context.Context, addr string, s *scrape) (stop func(), bound string, err error) {
@@ -139,6 +159,68 @@ func listenMetrics(ctx context.Context, addr string, s *scrape) (stop func(), bo
 		_ = srv.Close()
 		<-done
 	}, ln.Addr().String(), nil
+}
+
+// progressBoard redraws one status line per profile on a terminal.
+type progressBoard struct {
+	mu    sync.Mutex
+	w     *os.File
+	on    bool
+	order []string
+	line  map[string]string
+	drawn int
+}
+
+func newProgressBoard(w *os.File) *progressBoard {
+	b := &progressBoard{w: w, line: map[string]string{}}
+	if st, err := w.Stat(); err == nil && st.Mode()&os.ModeCharDevice != 0 {
+		b.on = true
+	}
+	return b
+}
+
+func (b *progressBoard) set(label, text string) {
+	if b == nil || !b.on {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if _, ok := b.line[label]; !ok {
+		b.order = append(b.order, label)
+	}
+	b.line[label] = text
+	if b.drawn > 0 {
+		_, _ = fmt.Fprintf(b.w, "\033[%dA", b.drawn)
+	}
+	for _, name := range b.order {
+		_, _ = fmt.Fprintf(b.w, "\r  %s  %s\033[K\n", name, b.line[name])
+	}
+	b.drawn = len(b.order)
+}
+
+func (b *progressBoard) clear() {
+	if b == nil || !b.on || b.drawn == 0 {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	_, _ = fmt.Fprintf(b.w, "\033[%dA", b.drawn)
+	for range b.drawn {
+		_, _ = fmt.Fprint(b.w, "\r\033[K\n")
+	}
+	_, _ = fmt.Fprintf(b.w, "\033[%dA", b.drawn)
+	b.drawn = 0
+}
+
+type lockWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (l *lockWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
 }
 
 func fanout(fns ...func(load.Progress)) func(load.Progress) {
