@@ -7,8 +7,7 @@ import (
 )
 
 // Selected reports whether tags satisfy a tag expression.
-// A bare name matches that tag. Commas and "or" match any. "and" matches all.
-// "not" and a leading "~" negate. anyOf() and allOf() are the same two operations.
+// Names, commas, or, and, not, ~, anyOf, and allOf follow Cucumber tag rules.
 func Selected(tags []string, expr string) (bool, error) {
 	expr = strings.TrimSpace(expr)
 	if expr == "" {

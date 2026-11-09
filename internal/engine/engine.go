@@ -238,8 +238,7 @@ func failedFile(f *feature.File, err error) FileResult {
 	}
 }
 
-// RunFiles runs every file. One file uses Jobs across its scenarios.
-// Several files use Jobs across files, and each file stays in order.
+// RunFiles runs every file. One file spreads Jobs across scenarios; several files spread Jobs across files.
 // done, when set, is called once per file, one file at a time.
 func RunFiles(ctx context.Context, files []*feature.File, opt Options, done func(FileResult)) ([]FileResult, error) {
 	opt.Stdout = synchronizeWriter(opt.Stdout)

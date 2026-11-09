@@ -27,10 +27,8 @@ func IsAbsent(v any) bool {
 	return ok
 }
 
-// Normalize copies v into the small set of types the matcher understands:
-// nil, bool, int64, float64, string, []byte, []any, and map[string]any.
-// Runtime-owned values (such as JS callbacks) stay opaque; caches validate them
-// separately rather than sharing them across scenarios.
+// Normalize copies v into nil, bool, int64, float64, string, []byte, []any, and map[string]any.
+// JS callbacks stay opaque so a cache does not share them across scenarios.
 func Normalize(v any) any {
 	switch t := v.(type) {
 	case interface{ Export() any }:

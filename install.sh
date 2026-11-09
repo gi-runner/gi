@@ -3,7 +3,7 @@
 # module is built with go when the release is not there yet.
 set -eu
 
-version="${GI_VERSION:-1.1.0}"
+version="${GI_VERSION:-1.1.1}"
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
 arch=$(uname -m)
 case "$arch" in
