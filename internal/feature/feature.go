@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,8 +23,10 @@ type File struct {
 	Description string
 	Tags        []string
 	Load        LoadSpec
+	Profiles    []Profile
 	Background  []Step
 	Scenarios   []Scenario
+	sections    int
 }
 
 type LoadSpec struct {
@@ -41,21 +44,40 @@ type LoadSpec struct {
 	RPS          int
 	Warmup       time.Duration
 	Thresholds   []string
-	Injectors    int
+}
+
+// Profile is one named load shape inside a feature file.
+// Scenarios opt in with @load=<name>.
+type Profile struct {
+	Name string
+	Load LoadSpec
 }
 
 type Scenario struct {
-	Name      string
-	Line      int
-	Tags      []string
-	Steps     []Step
-	Lead      int // inlined background steps; @setup runs the rest
-	IsSetup   bool
-	SetupName string
-	Outline   string // single-column examples header, expanded at run time
-	Row       map[string]any
-	Num       int
-	OutlineID int
+	Name        string
+	Description string
+	Line        int
+	Tags        []string
+	OwnTags     int // trailing entries of Tags declared below the feature
+	Steps       []Step
+	Lead        int // inlined background steps; @setup runs the rest
+	IsSetup     bool
+	SetupName   string
+	Outline     string // single-column examples header, expanded at run time
+	Row         map[string]any
+	Num         int
+	OutlineID   int
+	Section     int
+	Examples    *Examples
+}
+
+// Examples describes the outline a scenario was expanded from.
+type Examples struct {
+	Name        string
+	Description string
+	Line        int
+	Tables      []map[string]any
+	Scenarios   int
 }
 
 func (f *File) Setup(name string) (Scenario, bool) {
@@ -150,17 +172,28 @@ func Parse(path, source string) (*File, error) {
 		Description: strings.TrimSpace(doc.Feature.Description),
 		Tags:        tagNames(doc.Feature.Tags),
 	}
+	spec := &f.Load
 	for _, c := range doc.Comments {
-		if err := applyLoadComment(&f.Load, c.Text); err != nil {
+		next, err := f.readLoad(spec, c.Text)
+		if err != nil {
 			return nil, fmt.Errorf("%s:%d: %w", path, c.Location.Line, err)
 		}
+		spec = next
 	}
 	if err := f.Load.validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	for i := range f.Profiles {
+		if err := f.Profiles[i].Load.validate(); err != nil {
+			return nil, fmt.Errorf("%s: profile %s: %w", path, f.Profiles[i].Name, err)
+		}
+	}
 	labels := commentLabels(doc.Comments)
 	if err := walkFeature(doc.Feature, f, nil, labels); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	if err := f.checkLoadTags(); err != nil {
+		return nil, err
 	}
 	return f, nil
 }
@@ -206,18 +239,27 @@ func addScenario(f *File, sc *messages.Scenario, background []Step, labels map[i
 	own := stepsFrom(sc.Steps, labels)
 	steps := append(append([]Step{}, background...), own...)
 	isSetup, setupName := setupTag(sc.Tags)
+	section := f.sections
+	f.sections++
+	base := Scenario{
+		Name:        sc.Name,
+		Description: strings.TrimSpace(sc.Description),
+		Line:        int(sc.Location.Line),
+		Tags:        tags,
+		OwnTags:     len(tags) - len(f.Tags),
+		Steps:       steps,
+		Lead:        len(background),
+		IsSetup:     isSetup,
+		SetupName:   setupName,
+		Section:     section,
+	}
 	if len(sc.Examples) == 0 {
-		f.Scenarios = append(f.Scenarios, Scenario{
-			Name:      sc.Name,
-			Line:      int(sc.Location.Line),
-			Tags:      tags,
-			Steps:     steps,
-			Lead:      len(background),
-			IsSetup:   isSetup,
-			SetupName: setupName,
-		})
+		f.Scenarios = append(f.Scenarios, base)
 		return nil
 	}
+	examples := outlineOf(sc)
+	base.Examples = examples
+	base.OutlineID = base.Line
 	for _, ex := range sc.Examples {
 		if ex.TableHeader == nil {
 			continue
@@ -228,17 +270,11 @@ func addScenario(f *File, sc *messages.Scenario, background []Step, labels map[i
 			if !ok {
 				expr = strings.TrimSpace(headers[0])
 			}
-			f.Scenarios = append(f.Scenarios, Scenario{
-				Name:      sc.Name,
-				Line:      int(sc.Location.Line),
-				Tags:      exTags,
-				Steps:     steps,
-				Lead:      len(background),
-				IsSetup:   isSetup,
-				SetupName: setupName,
-				Outline:   expr,
-				OutlineID: int(sc.Location.Line),
-			})
+			dynamic := base
+			dynamic.Tags = exTags
+			dynamic.OwnTags = len(exTags) - len(f.Tags)
+			dynamic.Outline = expr
+			f.Scenarios = append(f.Scenarios, dynamic)
 			continue
 		}
 		n := 0
@@ -255,21 +291,43 @@ func addScenario(f *File, sc *messages.Scenario, background []Step, labels map[i
 				repl[h] = v
 				label = append(label, h+"="+v)
 			}
-			f.Scenarios = append(f.Scenarios, Scenario{
-				Name:      sc.Name + " [" + strings.Join(label, ", ") + "]",
-				Line:      int(row.Location.Line),
-				Tags:      exTags,
-				Steps:     substitute(steps, repl),
-				Lead:      len(background),
-				IsSetup:   isSetup,
-				SetupName: setupName,
-				Row:       rowValues(repl),
-				Num:       n - 1,
-				OutlineID: int(sc.Location.Line),
-			})
+			expanded := base
+			expanded.Name = sc.Name + " [" + strings.Join(label, ", ") + "]"
+			expanded.Line = int(row.Location.Line)
+			expanded.Tags = exTags
+			expanded.OwnTags = len(exTags) - len(f.Tags)
+			expanded.Steps = substitute(steps, repl)
+			expanded.Row = rowValues(repl)
+			expanded.Num = n - 1
+			f.Scenarios = append(f.Scenarios, expanded)
 		}
 	}
 	return nil
+}
+
+func outlineOf(sc *messages.Scenario) *Examples {
+	out := &Examples{Name: sc.Name, Description: strings.TrimSpace(sc.Description), Line: int(sc.Location.Line)}
+	for _, ex := range sc.Examples {
+		if ex.TableHeader == nil {
+			continue
+		}
+		headers := cells(ex.TableHeader)
+		rows := make([]any, 0, len(ex.TableBody))
+		for _, row := range ex.TableBody {
+			vals := cells(row)
+			m := make(map[string]any, len(headers))
+			for i, h := range headers {
+				m[h] = ""
+				if i < len(vals) {
+					m[h] = vals[i]
+				}
+			}
+			rows = append(rows, m)
+		}
+		out.Tables = append(out.Tables, map[string]any{"tags": tagNames(ex.Tags), "data": rows})
+		out.Scenarios += len(rows)
+	}
+	return out
 }
 
 func outlineExpr(headers []string) (string, bool) {
@@ -285,6 +343,12 @@ func outlineExpr(headers []string) (string, bool) {
 
 func Materialize(sc Scenario, rows []map[string]any) ([]Scenario, error) {
 	out := make([]Scenario, 0, len(rows))
+	var examples *Examples
+	if sc.Examples != nil {
+		copied := *sc.Examples
+		copied.Scenarios = len(rows)
+		examples = &copied
+	}
 	for i, row := range rows {
 		repl := make(map[string]string, len(row))
 		for k, v := range row {
@@ -298,18 +362,15 @@ func Materialize(sc Scenario, rows []map[string]any) ([]Scenario, error) {
 				repl[k] = string(raw)
 			}
 		}
-		out = append(out, Scenario{
-			Name:      sc.Name + " [" + rowLabel(repl) + "]",
-			Line:      sc.Line,
-			Tags:      append([]string{}, sc.Tags...),
-			Steps:     substitute(sc.Steps, repl),
-			Lead:      sc.Lead,
-			IsSetup:   sc.IsSetup,
-			SetupName: sc.SetupName,
-			Row:       row,
-			Num:       i,
-			OutlineID: sc.OutlineID,
-		})
+		next := sc
+		next.Name = sc.Name + " [" + rowLabel(repl) + "]"
+		next.Tags = append([]string{}, sc.Tags...)
+		next.Steps = substitute(sc.Steps, repl)
+		next.Outline = ""
+		next.Row = row
+		next.Num = i
+		next.Examples = examples
+		out = append(out, next)
 	}
 	return out, nil
 }
@@ -460,6 +521,135 @@ func commentLabels(comments []*messages.Comment) map[int64]string {
 	return out
 }
 
+func (f *File) readLoad(spec *LoadSpec, raw string) (*LoadSpec, error) {
+	text := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(raw), "#"))
+	rest, ok := strings.CutPrefix(text, "gi-load:")
+	if !ok {
+		return spec, nil
+	}
+	fields := strings.Fields(rest)
+	if len(fields) > 0 && strings.HasPrefix(fields[0], "name=") {
+		name := strings.TrimPrefix(fields[0], "name=")
+		if !profileName(name) {
+			return spec, fmt.Errorf("profile name %q must start with a letter", name)
+		}
+		for _, p := range f.Profiles {
+			if p.Name == name {
+				return spec, fmt.Errorf("profile %q is repeated", name)
+			}
+		}
+		f.Profiles = append(f.Profiles, Profile{Name: name})
+		spec = &f.Profiles[len(f.Profiles)-1].Load
+		fields = fields[1:]
+		if len(fields) == 0 {
+			return spec, nil
+		}
+		rest = strings.Join(fields, " ")
+	}
+	return spec, applyLoadComment(spec, "# gi-load: "+rest)
+}
+
+func profileName(name string) bool {
+	if name == "" || !isLetter(rune(name[0])) {
+		return false
+	}
+	for _, r := range name {
+		if !isLetter(r) && !isDigit(r) && r != '_' && r != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+func isLetter(r rune) bool { return r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' }
+func isDigit(r rune) bool  { return r >= '0' && r <= '9' }
+
+// Plans is the unnamed profile, when it has settings, then every named profile.
+// A feature with no gi-load comments still has one empty plan.
+func (f *File) Plans() []Profile {
+	if len(f.Profiles) == 0 {
+		return []Profile{{Load: f.Load}}
+	}
+	out := append([]Profile(nil), f.Profiles...)
+	if f.Load.set() {
+		out = append([]Profile{{Load: f.Load}}, out...)
+	}
+	return out
+}
+
+// ForProfile copies the file down to the scenarios that belong to name.
+// An empty name is the unnamed profile. With no @load tags, every profile runs every scenario.
+func (f *File) ForProfile(name string) *File {
+	g := *f
+	g.Profiles = nil
+	g.Load = f.Load.Clone()
+	for _, p := range f.Profiles {
+		if p.Name == name {
+			g.Load = p.Load.Clone()
+		}
+	}
+	if !f.hasLoadTags() {
+		g.Scenarios = append([]Scenario(nil), f.Scenarios...)
+		return &g
+	}
+	shareUntagged := name != "" && !f.Load.set()
+	var keep []Scenario
+	for _, sc := range f.Scenarios {
+		tags := loadTagNames(sc.Tags)
+		switch {
+		case sc.IsSetup:
+			keep = append(keep, sc)
+		case len(tags) == 0 && (name == "" || shareUntagged):
+			keep = append(keep, sc)
+		case slices.Contains(tags, name):
+			keep = append(keep, sc)
+		}
+	}
+	g.Scenarios = keep
+	return &g
+}
+
+func (f *File) checkLoadTags() error {
+	known := map[string]bool{"": len(f.Profiles) == 0 || f.Load.set()}
+	for _, p := range f.Profiles {
+		known[p.Name] = true
+	}
+	for _, sc := range f.Scenarios {
+		for _, name := range loadTagNames(sc.Tags) {
+			if !known[name] {
+				return fmt.Errorf("%s:%d: @load=%s has no gi-load profile", f.Path, sc.Line, name)
+			}
+		}
+	}
+	return nil
+}
+
+func (f *File) hasLoadTags() bool {
+	for _, sc := range f.Scenarios {
+		if len(loadTagNames(sc.Tags)) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func loadTagNames(tags []string) []string {
+	var out []string
+	for _, t := range tags {
+		k, v, ok := strings.Cut(strings.TrimPrefix(t, "@"), "=")
+		if ok && k == "load" && v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+func (spec LoadSpec) set() bool {
+	return spec.VUs > 0 || spec.UsersToSet || spec.RateSet || spec.Rate > 0 || spec.RateToSet ||
+		len(spec.StageText) > 0 || spec.Duration > 0 || spec.RPS > 0 || spec.Warmup > 0 ||
+		spec.MaxInFlight > 0 || spec.MaxEndpoints > 0 || len(spec.Thresholds) > 0
+}
+
 func applyLoadComment(spec *LoadSpec, raw string) error {
 	text := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(raw), "#"))
 	rest, ok := strings.CutPrefix(text, "gi-load:")
@@ -517,11 +707,6 @@ func applyLoadComment(spec *LoadSpec, raw string) error {
 			}
 		case "maxinflight":
 			spec.MaxInFlight, err = strconv.Atoi(raw)
-		case "injectors":
-			spec.Injectors, err = strconv.Atoi(raw)
-			if err == nil && spec.Injectors <= 0 {
-				err = errors.New("injectors must be positive")
-			}
 		default:
 			return fmt.Errorf("unknown gi-load setting %q", key)
 		}
@@ -530,6 +715,22 @@ func applyLoadComment(spec *LoadSpec, raw string) error {
 		}
 	}
 	return nil
+}
+
+// Clone copies the profile so a run can adjust it without touching the file.
+func (spec LoadSpec) Clone() LoadSpec {
+	spec.StageText = append([]string(nil), spec.StageText...)
+	spec.Thresholds = append([]string(nil), spec.Thresholds...)
+	return spec
+}
+
+// WithStages returns the profile with stage text replacing users, rate, and duration.
+func (spec LoadSpec) WithStages(text []string) LoadSpec {
+	spec.VUs, spec.VUsTo, spec.UsersToSet = 0, 0, false
+	spec.Rate, spec.RateTo, spec.RateSet, spec.RateToSet = 0, 0, false, false
+	spec.Duration = 0
+	spec.StageText = append([]string(nil), text...)
+	return spec
 }
 
 func (spec LoadSpec) validate() error {

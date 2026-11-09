@@ -30,6 +30,7 @@ type VM struct {
 	bindings    Bindings
 	karate      *sobek.Object
 	apiReady    bool
+	driverBound bool
 	custom      []string
 	headerValue sobek.Value
 	hookValues  map[string]sobek.Value
@@ -293,6 +294,7 @@ func (v *VM) eval(expr string) (any, error) {
 	if expr == "" {
 		return nil, errors.New("empty expression")
 	}
+	v.wantDriver(expr)
 	if got, handled, err := v.advancedPath(expr); handled {
 		return got, err
 	}
@@ -308,7 +310,6 @@ func (v *VM) eval(expr string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	v.pull()
 	if val == nil || sobek.IsUndefined(val) || sobek.IsNull(val) {
 		return nil, nil //nolint:nilnil // null and undefined are values
 	}
@@ -358,7 +359,6 @@ func (v *VM) Truthy(expr string, self, root any) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	v.pull()
 	if val == nil {
 		return false, nil
 	}
@@ -429,7 +429,9 @@ func (v *VM) exportObject(rv sobek.Value, seen map[*sobek.Object]any) any {
 		out := make(map[string]any, len(keys))
 		seen[obj] = out
 		for _, key := range keys {
-			out[key] = v.exportObject(obj.Get(key), seen)
+			if child := obj.Get(key); !sobek.IsUndefined(child) {
+				out[key] = v.exportObject(child, seen)
+			}
 		}
 		return out
 	case reflect.TypeFor[[]any]():
@@ -441,19 +443,6 @@ func (v *VM) exportObject(rv sobek.Value, seen map[*sobek.Object]any) any {
 		return out
 	default:
 		return value.Normalize(obj.Export())
-	}
-}
-
-func (v *VM) pull() {
-	for name, cur := range v.vars {
-		if _, ok := cur.(host); ok {
-			continue
-		}
-		rv := v.rt.Get(name)
-		if rv == nil || sobek.IsUndefined(rv) {
-			continue
-		}
-		v.vars[name] = v.export(rv)
 	}
 }
 
@@ -492,6 +481,7 @@ func (v *VM) arm(ctx context.Context, release func()) func() { //nolint:contextc
 }
 
 func (v *VM) run(src string) (sobek.Value, error) {
+	v.wantDriver(src)
 	prog, err := programs.compile(src)
 	if err != nil {
 		return nil, errors.New(firstLine(err.Error()))
@@ -688,9 +678,12 @@ func rewriteEmbeds(src string) string {
 				i++
 				continue
 			}
-			if !embeds {
+			switch {
+			case !embeds:
 				b.WriteString(src[i:end])
-			} else {
+			case optionalEmbed(parts):
+				b.WriteString(renderOptional(parts[1].s))
+			default:
 				b.WriteString(renderConcat(parts))
 			}
 			i = end
@@ -710,6 +703,16 @@ func rewriteEmbeds(src string) string {
 		i++
 	}
 	return b.String()
+}
+
+func optionalEmbed(parts []part) bool {
+	return len(parts) == 2 && parts[0].text && parts[0].s == "#" && !parts[1].text
+}
+
+// '##(x)' yields undefined when x is null or not defined, so the key is dropped.
+func renderOptional(expr string) string {
+	return "(() => { try { const v = (" + rewriteEmbeds(expr) + "); return v === null ? undefined : v } " +
+		"catch (e) { if (e instanceof ReferenceError) return undefined; throw e } })()"
 }
 
 func renderConcat(parts []part) string {
@@ -889,7 +892,6 @@ func (v *VM) invoke(val sobek.Value, arg any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	v.pull()
 	if got == nil || sobek.IsUndefined(got) {
 		return nil, nil //nolint:nilnil // JavaScript undefined is a valid result.
 	}

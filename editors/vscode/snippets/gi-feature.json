@@ -1,0 +1,79 @@
+{
+  "Feature": {
+    "prefix": "feature",
+    "body": [
+      "Feature: ${1:name}",
+      "",
+      "  Background:",
+      "    * url ${2:baseUrl}",
+      "",
+      "  Scenario: ${3:description}",
+      "    $0"
+    ],
+    "description": "Feature with a Background and one Scenario"
+  },
+  "Scenario": {
+    "prefix": "scenario",
+    "body": [
+      "Scenario: ${1:description}",
+      "  $0"
+    ],
+    "description": "Scenario"
+  },
+  "Scenario Outline": {
+    "prefix": "outline",
+    "body": [
+      "Scenario Outline: ${1:description}",
+      "  * def ${2:value} = <${3:column}>",
+      "  $0",
+      "",
+      "  Examples:",
+      "    | ${3:column} |",
+      "    | ${4:example} |"
+    ],
+    "description": "Scenario Outline with an Examples table"
+  },
+  "Background": {
+    "prefix": "background",
+    "body": [
+      "Background:",
+      "  * url ${1:baseUrl}",
+      "  $0"
+    ],
+    "description": "Background"
+  },
+  "def": {
+    "prefix": "def",
+    "body": "* def ${1:name} = ${2:value}",
+    "description": "Define a variable"
+  },
+  "match": {
+    "prefix": "match",
+    "body": "* match ${1:response} ${2|==,!=,contains,contains only,contains any,contains deep,!contains,within,!within|} ${3:expected}",
+    "description": "Match assertion"
+  },
+  "url and method": {
+    "prefix": "request",
+    "body": [
+      "* url ${1:baseUrl}",
+      "* path '${2:resource}'",
+      "* method ${3|get,post,put,patch,delete,head,options|}",
+      "* status ${4:200}"
+    ],
+    "description": "url, path, method, and status steps"
+  },
+  "call read": {
+    "prefix": "call",
+    "body": "* def ${1:result} = call read('${2:other.feature}')${3: { ${4:arg}: ${5:value} \\}}",
+    "description": "Call another feature file"
+  },
+  "Doc string": {
+    "prefix": "docstring",
+    "body": [
+      "\"\"\"",
+      "$0",
+      "\"\"\""
+    ],
+    "description": "Triple-quoted doc string"
+  }
+}

@@ -3,18 +3,24 @@ package load
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"time"
 
 	"github.com/gi-runner/gi/internal/engine"
 )
 
-// Snapshot is one injector's histograms. Merging snapshots keeps percentiles.
+// Snapshot is one part's histograms and the full profile it belongs to.
+// Merging snapshots keeps percentiles exact to the histogram resolution.
 type Snapshot struct {
 	Started          time.Time               `json:"started"`
 	Elapsed          time.Duration           `json:"elapsed"`
 	Profile          string                  `json:"profile,omitempty"`
+	Duration         time.Duration           `json:"duration"`
+	Thresholds       []string                `json:"thresholds,omitempty"`
+	Part             Part                    `json:"part"`
 	Open             bool                    `json:"open,omitempty"`
 	VUs              int                     `json:"vus"`
 	Iterations       int64                   `json:"iterations"`
@@ -67,7 +73,10 @@ func (s *session) snapshot(res Result) Snapshot {
 	snap := Snapshot{
 		Started:          res.Started,
 		Elapsed:          res.Elapsed,
-		Profile:          res.Profile,
+		Profile:          Describe(s.full),
+		Duration:         s.full.Duration,
+		Thresholds:       s.full.Thresholds,
+		Part:             s.full.Part,
 		Open:             res.Open,
 		VUs:              res.VUs,
 		Iterations:       res.Iterations,
@@ -136,21 +145,25 @@ func ReadSnapshot(path string) (Snapshot, error) {
 	return snap, nil
 }
 
-// Merge joins injector snapshots and judges the full profile.
-func Merge(snaps []Snapshot, cfg Config) (Result, error) {
-	if len(snaps) == 0 {
-		return Result{}, errors.New("load injectors produced no results")
+// Merge joins every part of one profile and judges it with the recorded
+// thresholds plus extra.
+func Merge(snaps []Snapshot, extra []string) (Result, error) {
+	if err := complete(snaps); err != nil {
+		return Result{}, err
 	}
-	ths, err := ParseThresholds(cfg.Thresholds)
+	first := snaps[0]
+	ths, err := ParseThresholds(append(slices.Clone(first.Thresholds), extra...))
 	if err != nil {
 		return Result{}, err
 	}
 	combined := combine(snaps)
-	combined.Profile = Describe(cfg)
-	combined.Open = cfg.openLoop()
-	combined.EndpointLimit = cfg.MaxEndpoints
+	combined.Profile = first.Profile
+	if first.Part.Of > 1 {
+		combined.Profile += fmt.Sprintf(" across %d parts", first.Part.Of)
+	}
+	combined.EndpointLimit = first.EndpointLimit
 	res := combined.result()
-	applyVerdict(&res, ths, cfg.Duration)
+	applyVerdict(&res, ths, first.Duration)
 	var runErr error
 	for _, snap := range snaps {
 		if snap.Err != "" {
@@ -160,6 +173,27 @@ func Merge(snaps []Snapshot, cfg Config) (Result, error) {
 		}
 	}
 	return res, runErr
+}
+
+func complete(snaps []Snapshot) error {
+	if len(snaps) == 0 {
+		return errors.New("merge needs at least one snapshot")
+	}
+	first := snaps[0]
+	if len(snaps) != first.Part.Of {
+		return fmt.Errorf("merge has %d snapshots for a profile in %d parts", len(snaps), first.Part.Of)
+	}
+	seen := make([]bool, first.Part.Of)
+	for _, snap := range snaps {
+		if snap.Profile != first.Profile || snap.Part.Of != first.Part.Of || snap.Duration != first.Duration {
+			return errors.New("snapshots come from different load profiles")
+		}
+		if snap.Part.Index < 0 || snap.Part.Index >= len(seen) || seen[snap.Part.Index] {
+			return fmt.Errorf("part %d appears twice or is out of range", snap.Part.Index+1)
+		}
+		seen[snap.Part.Index] = true
+	}
+	return nil
 }
 
 func combine(snaps []Snapshot) Snapshot {

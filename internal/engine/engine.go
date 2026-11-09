@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -37,7 +36,10 @@ type Options struct {
 	BeforeRequest  func(context.Context) error
 	Prepare        func(*script.VM)
 	Dial           func(context.Context, string, map[string]any) (Link, error)
-	NewPage        func(context.Context) (Page, error)
+	NewPage        func(context.Context, DriverConfig) (Page, error)
+	StartMock      func(context.Context, MockSpec) (script.Server, error)
+	Steps          []StepDef
+	Helpers        map[string]func([]any) (any, error)
 	Depth          int
 	Env            string
 	Suite          *suite.Suite
@@ -119,6 +121,7 @@ type StepResult struct {
 	Keyword  string        `json:"keyword"`
 	Text     string        `json:"text"`
 	Passed   bool          `json:"passed"`
+	Skipped  bool          `json:"skipped,omitempty"`
 	Canceled bool          `json:"canceled,omitempty"`
 	Duration time.Duration `json:"duration"`
 	Error    string        `json:"error,omitempty"`
@@ -192,7 +195,7 @@ func newExec(ctx context.Context, f *feature.File, opt Options) *exec {
 }
 
 func sessionFrom(opt Options) session {
-	s := session{timeout: opt.Timeout, follow: true}
+	s := session{timeout: opt.Timeout, follow: true, driver: DriverConfig{Headless: true}}
 	if opt.inherited != nil {
 		s = persistentSession(*opt.inherited)
 		s.jar = opt.inherited.jar.fork()
@@ -324,7 +327,7 @@ func RunFile(ctx context.Context, f *feature.File, opt Options) (FileResult, err
 	if opt.Suite == nil {
 		opt.Suite = suite.Open(f.Path, opt.Env)
 	}
-	include := func(sc feature.Scenario) (bool, error) { return selected(sc, opt) }
+	include := func(sc feature.Scenario) (bool, error) { return Selected(sc, opt) }
 	f, err := expand(ctx, f, opt, include)
 	if err != nil {
 		return FileResult{}, err
@@ -339,7 +342,7 @@ func RunFile(ctx context.Context, f *feature.File, opt Options) (FileResult, err
 		if sc.IsSetup {
 			continue
 		}
-		ok, err := selected(sc, opt)
+		ok, err := Selected(sc, opt)
 		if err != nil {
 			return FileResult{}, err
 		}
@@ -367,6 +370,8 @@ func RunFile(ctx context.Context, f *feature.File, opt Options) (FileResult, err
 		var res ScenarioResult
 		if err := ctx.Err(); err != nil {
 			res = cancelled(j.sc, err)
+		} else if opt.Suite.Aborted() {
+			res = ScenarioResult{Name: j.sc.Name, Line: j.sc.Line, Tags: j.sc.Tags, Skipped: true, Passed: true, Error: "suite aborted by abortSuiteOnFailure"}
 		} else {
 			release, err := opt.Suite.Acquire(ctx, j.sc.Tags)
 			if err != nil {
@@ -374,6 +379,9 @@ func RunFile(ctx context.Context, f *feature.File, opt Options) (FileResult, err
 			} else {
 				res = runScenario(ctx, f, j.sc, opt, func(ex *exec) { runtimes[i] = ex })
 				release()
+				if !res.Passed && runtimes[i] != nil && runtimes[i].sess.abortSuite {
+					opt.Suite.Abort()
+				}
 			}
 		}
 		out.Scenarios[j.i] = res
@@ -454,6 +462,7 @@ func runScenario(ctx context.Context, f *feature.File, sc feature.Scenario, opt 
 	}
 	defer func() {
 		defer stop()
+		ex.sess.out.shape(&res)
 		if finish != nil {
 			finish(ex)
 		}
@@ -474,8 +483,7 @@ func runScenario(ctx context.Context, f *feature.File, sc feature.Scenario, opt 
 }
 
 func (ex *exec) executeScenario(res ScenarioResult) ScenarioResult {
-	ctx, f, sc, opt := ex.ctx, ex.file, ex.scenario, ex.opt
-	vm := ex.vm
+	ctx, opt := ex.ctx, ex.opt
 	if err := ex.bind(); err != nil {
 		res.Passed = false
 		res.Canceled = ctx.Err() != nil
@@ -488,130 +496,16 @@ func (ex *exec) executeScenario(res ScenarioResult) ScenarioResult {
 		res.Error = err.Error()
 		return res
 	}
-	if opt.VU > 0 {
-		vm.Set("vu", int64(opt.VU))
-	} else {
-		vm.Set("vu", int64(1))
+	if err := ex.seed(); err != nil {
+		res.Passed = false
+		res.Error = err.Error()
+		return res
 	}
-	if opt.Iter > 0 {
-		vm.Set("iter", int64(opt.Iter))
-	} else {
-		vm.Set("iter", int64(1))
-	}
-	if opt.vm == nil {
-		for k, v := range opt.Vars {
-			vm.Set(k, v)
-		}
-	}
-	if opt.Prepare != nil {
-		opt.Prepare(vm)
-	}
-	if sc.Row != nil {
-		row := make(map[string]any, len(sc.Row))
-		for k, val := range sc.Row {
-			if name, typed := strings.CutSuffix(k, "!"); typed {
-				var err error
-				val, err = vm.Eval(value.Sprint(val))
-				if err != nil {
-					res.Passed = false
-					res.Error = fmt.Sprintf("example %s: %v", name, err)
-					return res
-				}
-				k = name
-			}
-			row[k] = val
-			vm.Set(k, val)
-		}
-		vm.Set("__row", row)
-		vm.Set("__num", int64(sc.Num))
-	}
-
-	stopped := false
-	if !opt.SkipHooks {
-		if sr, ok := ex.hook("beforeScenario"); ok {
-			res.Steps = append(res.Steps, sr)
-			if !sr.Passed {
-				res.Passed = false
-				if res.Error == "" {
-					res.Error = fmt.Sprintf("%s:%d: %s", f.Path, sc.Line, sr.Error)
-				}
-				stopped = !ex.sess.continueOnFail
-			}
-		}
-	}
-	if !stopped {
-		for _, st := range sc.Steps {
-			if ex.aborted {
-				break
-			}
-			if ctx.Err() != nil {
-				if res.Passed {
-					res.Canceled = true
-				}
-				res.Passed = false
-				res.Error = ctx.Err().Error()
-				break
-			}
-			sr := ex.runStep(ctx, st)
-			res.Steps = append(res.Steps, sr)
-			if sr.Passed {
-				continue
-			}
-			if res.Passed {
-				res.Canceled = sr.Canceled
-			}
-			if !sr.Canceled {
-				res.Canceled = false
-			}
-			res.Passed = false
-			if sr.Error != "" {
-				prefix := fmt.Sprintf("%s:%d", f.Path, st.Line)
-				if st.Label != "" {
-					res.Error = st.Label + "\n" + prefix + ": " + sr.Error
-				} else {
-					res.Error = prefix + ": " + sr.Error
-				}
-				if sr.Diff != "" {
-					res.Error += "\n" + sr.Diff
-				}
-			}
-			if ex.miss {
-				res.Miss = true
-				res.Passed = false
-				break
-			}
-			proceed := ex.sess.continueOnFail
-			if !opt.SkipHooks && !sr.Canceled {
-				hookStart := time.Now()
-				decision, hookErr := vm.StepFailure(map[string]any{"error": sr.Error, "scenarioName": sc.Name, "featureName": f.Name, "step": map[string]any{"line": st.Line, "text": st.Text, "prefix": st.Keyword}})
-				if decision.Override {
-					proceed = decision.Continue
-				}
-				if hookErr != nil || len(ex.embeds) > 0 || len(ex.calls) > 0 {
-					hookStep := StepResult{Keyword: "*", Text: "onStepFailure", Passed: hookErr == nil, Duration: time.Since(hookStart), Calls: ex.calls, Embeds: ex.embeds}
-					ex.calls = nil
-					ex.embeds = nil
-					if hookErr != nil {
-						hookStep.Error = hookErr.Error()
-					}
-					res.Steps = append(res.Steps, hookStep)
-				}
-			}
-			if !proceed {
-				break
-			}
-		}
+	if opt.SkipHooks || ex.scenarioHook("beforeScenario", &res) || ex.sess.continueOnFail {
+		ex.runSteps(&res)
 	}
 	if !opt.SkipHooks {
-		if sr, ok := ex.hook("afterScenario"); ok {
-			res.Steps = append(res.Steps, sr)
-			if !sr.Passed {
-				res.Passed = false
-				if res.Error == "" {
-					res.Error = fmt.Sprintf("%s:%d: %s", f.Path, sc.Line, sr.Error)
-				}
-			}
-		}
+		ex.scenarioHook("afterScenario", &res)
 	}
 	if err := ctx.Err(); err != nil {
 		if res.Passed {
@@ -622,12 +516,144 @@ func (ex *exec) executeScenario(res ScenarioResult) ScenarioResult {
 			res.Error = err.Error()
 		}
 	}
-	res.Vars = vm.Vars()
+	if opt.LoadMode && opt.Depth == 0 && res.Passed {
+		return res
+	}
+	res.Vars = ex.vm.Vars()
 	if len(ex.defined) > 0 {
 		res.Defined = make(map[string]bool, len(ex.defined))
 		maps.Copy(res.Defined, ex.defined)
 	}
 	return res
+}
+
+// seed sets vu, iter, run variables, and the example row before the steps.
+func (ex *exec) seed() error {
+	vm, opt, sc := ex.vm, ex.opt, ex.scenario
+	vm.Set("vu", int64(max(opt.VU, 1)))
+	vm.Set("iter", int64(max(opt.Iter, 1)))
+	if opt.vm == nil {
+		for k, v := range opt.Vars {
+			vm.Set(k, v)
+		}
+	}
+	if opt.Prepare != nil {
+		opt.Prepare(vm)
+	}
+	if sc.Row == nil {
+		return nil
+	}
+	row := make(map[string]any, len(sc.Row))
+	for k, val := range sc.Row {
+		if name, typed := strings.CutSuffix(k, "!"); typed {
+			var err error
+			if val, err = vm.Eval(value.Sprint(val)); err != nil {
+				return fmt.Errorf("example %s: %w", name, err)
+			}
+			k = name
+		}
+		row[k] = val
+		vm.Set(k, val)
+	}
+	vm.Set("__row", row)
+	vm.Set("__num", int64(sc.Num))
+	return nil
+}
+
+// scenarioHook runs a configured scenario hook and reports whether it passed.
+func (ex *exec) scenarioHook(name string, res *ScenarioResult) bool {
+	sr, ok := ex.hook(name)
+	if !ok {
+		return true
+	}
+	res.Steps = append(res.Steps, sr)
+	if sr.Passed {
+		return true
+	}
+	res.Passed = false
+	if res.Error == "" {
+		res.Error = fmt.Sprintf("%s:%d: %s", ex.file.Path, ex.scenario.Line, sr.Error)
+	}
+	return false
+}
+
+// runSteps runs the steps until one stops the scenario, then lists the rest as skipped.
+func (ex *exec) runSteps(res *ScenarioResult) {
+	ctx, steps := ex.ctx, ex.scenario.Steps
+	var rest []feature.Step
+	for i, st := range steps {
+		if ex.aborted {
+			rest = steps[i:]
+			break
+		}
+		if ctx.Err() != nil {
+			res.Canceled = res.Canceled || res.Passed
+			res.Passed = false
+			res.Error = ctx.Err().Error()
+			break
+		}
+		sr := ex.runStep(ctx, st)
+		res.Steps = append(res.Steps, sr)
+		if sr.Passed {
+			continue
+		}
+		if ex.failed(st, sr, res) {
+			continue
+		}
+		if !ex.miss {
+			rest = steps[i+1:]
+		}
+		break
+	}
+	for _, st := range rest {
+		passed := ex.aborted && ex.sess.abortedPass
+		res.Steps = append(res.Steps, StepResult{Line: st.Line, Keyword: st.Keyword, Text: st.Text, Passed: passed, Skipped: !passed})
+	}
+}
+
+// failed records a failed step and reports whether the scenario continues.
+func (ex *exec) failed(st feature.Step, sr StepResult, res *ScenarioResult) bool {
+	if res.Passed {
+		res.Canceled = sr.Canceled
+	}
+	if !sr.Canceled {
+		res.Canceled = false
+	}
+	res.Passed = false
+	if sr.Error != "" {
+		res.Error = fmt.Sprintf("%s:%d: %s", ex.file.Path, st.Line, sr.Error)
+		if st.Label != "" {
+			res.Error = st.Label + "\n" + res.Error
+		}
+		if sr.Diff != "" {
+			res.Error += "\n" + sr.Diff
+		}
+	}
+	if ex.miss {
+		res.Miss = true
+		return false
+	}
+	proceed := ex.sess.continueOnFail
+	if ex.opt.SkipHooks || sr.Canceled {
+		return proceed
+	}
+	start := time.Now()
+	decision, err := ex.vm.StepFailure(map[string]any{
+		"error": sr.Error, "scenarioName": ex.scenario.Name, "featureName": ex.file.Name,
+		"step": map[string]any{"line": st.Line, "text": st.Text, "prefix": st.Keyword},
+	})
+	if decision.Override {
+		proceed = decision.Continue
+	}
+	if err != nil || len(ex.embeds) > 0 || len(ex.calls) > 0 {
+		hook := StepResult{Keyword: "*", Text: "onStepFailure", Passed: err == nil, Duration: time.Since(start), Calls: ex.calls, Embeds: ex.embeds}
+		ex.calls, ex.embeds = nil, nil
+		if err != nil {
+			hook.Error = err.Error()
+		}
+		res.Steps = append(res.Steps, hook)
+	}
+	return proceed
 }
 
 type session struct {
@@ -648,6 +674,16 @@ type session struct {
 	timeout        time.Duration
 	follow         bool
 	continueOnFail bool
+	cors           bool
+	httpRetry      bool
+	abortSuite     bool
+	abortedPass    bool
+	charset        string
+	singleCache    singleCache
+	out            output
+	driver         DriverConfig
+	mockHeaders    map[string]any
+	prev           map[string]any
 }
 
 type exec struct {
@@ -691,244 +727,6 @@ func (e *exec) runStep(ctx context.Context, st feature.Step) StepResult {
 		}
 	}
 	return sr
-}
-
-func (e *exec) step(ctx context.Context, st feature.Step, sr *StepResult) error {
-	text := strings.TrimSpace(st.Text)
-	doc := st.DocString
-	fields := strings.SplitN(text, " ", 2)
-	cmd := strings.ToLower(fields[0])
-	rest := ""
-	if len(fields) == 2 {
-		rest = strings.TrimSpace(fields[1])
-	}
-	switch cmd {
-	case "url":
-		v, err := e.eval(orDoc(rest, doc))
-		if err != nil {
-			return err
-		}
-		e.sess.baseURL = value.Sprint(v)
-		return nil
-	case "path":
-		args, err := e.evalArgs(orDoc(rest, doc))
-		if err != nil {
-			return err
-		}
-		var appendPath func(any)
-		appendPath = func(v any) {
-			if v == nil {
-				return
-			}
-			if list, ok := value.AsSlice(v); ok {
-				for _, item := range list {
-					appendPath(item)
-				}
-				return
-			}
-			e.sess.paths = append(e.sess.paths, value.Sprint(v))
-		}
-		for _, arg := range args {
-			appendPath(arg)
-		}
-		return nil
-	case "param":
-		name, expr, ok := splitAssign(rest)
-		if !ok {
-			return errors.New("param expects name = value")
-		}
-		v, err := e.eval(expr)
-		if err != nil {
-			return err
-		}
-		if e.sess.params == nil {
-			e.sess.params = url.Values{}
-		}
-		setValues(e.sess.params, strings.TrimSpace(name), v)
-		return nil
-	case "params":
-		v, err := e.eval(orDoc(rest, doc))
-		if err != nil {
-			return err
-		}
-		m, ok := value.AsMap(v)
-		if !ok {
-			return errors.New("params expects an object")
-		}
-		if e.sess.params == nil {
-			e.sess.params = url.Values{}
-		}
-		for k, child := range m {
-			setValues(e.sess.params, k, child)
-		}
-		return nil
-	case "header":
-		name, expr, ok := splitAssign(rest)
-		if !ok {
-			return errors.New("header expects Name = value")
-		}
-		v, err := e.eval(expr)
-		if err != nil {
-			return err
-		}
-		e.sess.headers = headerValues(e.sess.headers, strings.TrimSpace(name), v)
-		return nil
-	case "headers":
-		v, err := e.eval(orDoc(rest, doc))
-		if err != nil {
-			return err
-		}
-		m, ok := value.AsMap(v)
-		if !ok {
-			return errors.New("headers expects an object")
-		}
-		for k, child := range m {
-			e.sess.headers = headerValues(e.sess.headers, k, child)
-		}
-		return nil
-	case "cookie":
-		name, expr, ok := splitAssign(rest)
-		if !ok {
-			return errors.New("cookie expects name = value")
-		}
-		v, err := e.eval(expr)
-		if err != nil {
-			return err
-		}
-		e.sess.cookies = append(e.sess.cookies, [2]string{strings.TrimSpace(name), cookieText(v)})
-		return nil
-	case "cookies":
-		return e.cookies(orDoc(rest, doc))
-	case "form":
-		return e.formStep(rest, doc)
-	case "multipart":
-		return e.multipart(rest, doc)
-	case "request":
-		v, err := e.eval(orDoc(rest, doc))
-		if err != nil {
-			return err
-		}
-		e.sess.body = v
-		e.sess.hasBody = true
-		return nil
-	case "soap":
-		action, ok := strings.CutPrefix(rest, "action")
-		if !ok {
-			return errors.New("soap expects action <expression>")
-		}
-		var v any
-		if strings.TrimSpace(action) != "" {
-			var err error
-			v, err = e.eval(action)
-			if err != nil {
-				return err
-			}
-		}
-		e.sess.headers = headerSet(e.sess.headers, "SOAPAction", value.Sprint(v))
-		e.sess.headers = headerSet(e.sess.headers, "Content-Type", "text/xml")
-		return e.method(ctx, "POST", sr)
-	case "method":
-		return e.method(ctx, rest, sr)
-	case "status":
-		v, err := e.eval(rest)
-		if err != nil {
-			return err
-		}
-		want, ok := value.AsInt(v)
-		if !ok {
-			return fmt.Errorf("status expects a number, got %s", value.Kind(v))
-		}
-		got, _ := e.vm.Get("responseStatus")
-		have, ok := value.AsInt(got)
-		if !ok {
-			return errors.New("no response yet")
-		}
-		if have != want {
-			return fmt.Errorf("status %d != %d", have, want)
-		}
-		return nil
-	case "match":
-		return e.match(rest, doc, sr)
-	case "def":
-		return e.def(ctx, rest, doc)
-	case "eval":
-		_, err := e.eval(orDoc(rest, doc))
-		return err
-	case "string", "bytes":
-		return e.convertStep(cmd, rest, doc)
-	case "text":
-		return e.textStep(rest, doc)
-	case "json":
-		return e.jsonStep(rest, doc)
-	case "yaml":
-		return e.yamlStep(rest, doc)
-	case "csv":
-		return e.csvStep(rest, doc)
-	case "xml":
-		return e.xmlStep(rest, doc)
-	case "xmlstring":
-		return e.xmlStringStep(rest, doc)
-	case "driver":
-		return e.driverStep(ctx, orDoc(rest, doc))
-	case "click":
-		return e.clickStep(ctx, orDoc(rest, doc))
-	case "input":
-		return e.inputStep(ctx, rest)
-	case "copy":
-		return e.copyStep(rest)
-	case "table":
-		return e.tableStep(rest, st.Rows)
-	case "replace":
-		return e.replaceStep(rest, st.Rows)
-	case "assert":
-		return e.assertStep(orDoc(rest, doc))
-	case "print":
-		return e.print(orDoc(rest, doc), sr)
-	case "configure":
-		return e.configure(rest)
-	case "set":
-		if len(st.Rows) > 0 {
-			return e.setTable(rest, st.Rows)
-		}
-		lhs, rhs, ok := splitAssign(rest)
-		if !ok {
-			return errors.New("set expects path = value")
-		}
-		if strings.TrimSpace(rhs) == "" {
-			rhs = doc
-		}
-		v, err := e.eval(rhs)
-		if err != nil {
-			return err
-		}
-		if name, path, ok := splitXMLPath(strings.TrimSpace(lhs)); ok {
-			return e.mutateXML(name, path, v, false)
-		}
-		return e.vm.SetPath(strings.TrimSpace(lhs), v)
-	case "remove":
-		path := strings.TrimSpace(orDoc(rest, doc))
-		if name, xpath, ok := splitXMLPath(path); ok {
-			return e.mutateXML(name, xpath, nil, true)
-		}
-		return e.vm.RemovePath(path)
-	case "call", "callonce":
-		_, err := e.call(ctx, orDoc(rest, doc), cmd == "callonce", true)
-		return err
-	case "retry":
-		expr, ok := strings.CutPrefix(strings.TrimSpace(rest), "until ")
-		if !ok {
-			return errors.New("retry expects until <expression>")
-		}
-		e.vm.SetRetryUntil(strings.TrimSpace(expr))
-		return nil
-	case "methodis":
-		return e.methodIs(rest)
-	case "pathmatches":
-		return e.pathMatches(rest)
-	default:
-		_, err := e.eval(orDoc(text, doc))
-		return err
-	}
 }
 
 func (e *exec) eval(expr string) (any, error) {
@@ -978,8 +776,7 @@ func (e *exec) def(ctx context.Context, rest, doc string) error {
 	if err != nil {
 		return err
 	}
-	e.vm.Set(name, val)
-	e.defined[name] = true
+	e.setDefined(name, val)
 	return nil
 }
 
@@ -988,77 +785,13 @@ func (e *exec) defCall(ctx context.Context, name, expr string, once bool) error 
 	if err != nil {
 		return err
 	}
+	e.setDefined(name, val)
+	return nil
+}
+
+func (e *exec) setDefined(name string, val any) {
 	e.vm.Set(name, val)
 	e.defined[name] = true
-	return nil
-}
-
-func (e *exec) configure(rest string) error {
-	name, expr, ok := splitAssign(rest)
-	if !ok {
-		return errors.New("configure expects name = value")
-	}
-	name = strings.TrimSpace(name)
-	expr = strings.TrimSpace(expr)
-	switch name {
-	case "headers":
-		return e.vm.ConfigureHeaders(expr)
-	case "beforeScenario", "afterScenario", "afterFeature", "afterScenarioOutline", "onStepFailure":
-		return e.vm.ConfigureHook(name, expr)
-	}
-	val, err := e.eval(expr)
-	if err != nil {
-		return err
-	}
-	return e.apply(name, val)
-}
-
-func (e *exec) apply(name string, val any) error {
-	switch name {
-	case "timeout", "readTimeout":
-		n, ok := value.AsInt(val)
-		if !ok || n <= 0 || int64(n) > math.MaxInt64/int64(time.Millisecond) {
-			return errors.New("timeout expects positive milliseconds within the duration range")
-		}
-		e.sess.timeout = time.Duration(n) * time.Millisecond
-	case "url":
-		e.sess.baseURL = value.Sprint(val)
-	case "matchEachEmptyAllowed", "strictResponseParsing":
-		b, ok := val.(bool)
-		if !ok {
-			return fmt.Errorf("%s expects a boolean", name)
-		}
-		if name == "matchEachEmptyAllowed" {
-			e.sess.matchEachEmpty = b
-		} else {
-			e.sess.strictParsing = b
-		}
-	case "ssl":
-		return e.configureSSL(val)
-	case "proxy":
-		return e.configureProxy(val)
-	case "connectTimeout":
-		return e.configureConnectTimeout(val)
-	case "followRedirects":
-		b, ok := val.(bool)
-		if !ok {
-			return errors.New("followRedirects expects true or false")
-		}
-		e.sess.follow = b
-	case "continueOnStepFailure":
-		b, ok := val.(bool)
-		if !ok {
-			return errors.New("continueOnStepFailure expects true or false")
-		}
-		e.sess.continueOnFail = b
-	case "retry":
-		return e.vm.ConfigureRetry(val)
-	case "auth":
-		return e.setAuth(val)
-	default:
-		return fmt.Errorf("unknown configure %q", name)
-	}
-	return nil
 }
 
 func (e *exec) print(expr string, sr *StepResult) error {
@@ -1072,7 +805,7 @@ func (e *exec) print(expr string, sr *StepResult) error {
 	}
 	line := strings.Join(vals, " ")
 	sr.Output = line
-	if e.opt.Stdout != nil && !e.opt.LoadMode && !e.opt.reportDisabled {
+	if e.opt.Stdout != nil && !e.opt.LoadMode && !e.opt.reportDisabled && !e.sess.out.quiet {
 		if _, err := fmt.Fprintln(e.opt.Stdout, line); err != nil {
 			return fmt.Errorf("print: %w", err)
 		}

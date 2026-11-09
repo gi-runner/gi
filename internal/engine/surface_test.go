@@ -159,7 +159,7 @@ func TestInputFileResolutionAndValidation(t *testing.T) {
 	for _, ref := range []string{"note.txt", "this:note.txt", "classpath:note.txt", "file:" + file} {
 		t.Run(ref, func(t *testing.T) {
 			page := &uploadPage{}
-			runRelease(t, filepath.Join(dir, "upload.feature"), "Feature: upload\nScenario: upload\n* driver 'http://page.test'\n* inputFile('#file', ref)\n", engine.Options{Vars: map[string]any{"ref": ref}, NewPage: func(context.Context) (engine.Page, error) { return page, nil }})
+			runRelease(t, filepath.Join(dir, "upload.feature"), "Feature: upload\nScenario: upload\n* driver 'http://page.test'\n* inputFile('#file', ref)\n", engine.Options{Vars: map[string]any{"ref": ref}, NewPage: func(context.Context, engine.DriverConfig) (engine.Page, error) { return page, nil }})
 			if len(page.files) != 1 || page.files[0] != file {
 				t.Fatalf("resolved files: %v", page.files)
 			}
@@ -172,7 +172,7 @@ func TestInputFileResolutionAndValidation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			res, err := engine.RunFile(t.Context(), f, engine.Options{Vars: map[string]any{"ref": ref}, NewPage: func(context.Context) (engine.Page, error) { return page, nil }})
+			res, err := engine.RunFile(t.Context(), f, engine.Options{Vars: map[string]any{"ref": ref}, NewPage: func(context.Context, engine.DriverConfig) (engine.Page, error) { return page, nil }})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -61,6 +61,15 @@ func ParseDocument(raw string) (*Document, error) {
 func (d *Document) String() string {
 	return d.root.OutputXMLWithOptions(xmlquery.WithPreserveSpace(), xmlquery.WithEmptyTagSupport())
 }
+func (d *Document) Pretty() string {
+	var b strings.Builder
+	for n := d.root.FirstChild; n != nil; n = n.NextSibling {
+		if n.Type == xmlquery.ElementNode {
+			b.WriteString(n.OutputXMLWithOptions(xmlquery.WithOutputSelf(), xmlquery.WithIndentation("  "), xmlquery.WithEmptyTagSupport()))
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
 func (d *Document) MarshalJSON() ([]byte, error) { return json.Marshal(d.DataValue()) }
 func (d *Document) CloneValue() (any, error)     { return &Document{root: cloneNode(d.root)}, nil }
 func (d *Document) DataValue() any {

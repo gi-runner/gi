@@ -165,10 +165,26 @@ func (v *VM) bindRuntime() {
 		}
 		return v.rt.ToValue(true)
 	})
+	_ = obj.Set("start", func(call sobek.FunctionCall) sobek.Value {
+		if v.bindings.Start == nil || missing(call.Argument(0)) {
+			panic(v.rt.NewGoError(errors.New("start needs a mock feature path or options")))
+		}
+		srv, err := v.bindings.Start(value.Normalize(call.Argument(0).Export()))
+		if err != nil {
+			panic(v.rt.NewGoError(err))
+		}
+		return v.Object(
+			map[string]any{"__gi": true, "url": srv.URL, "port": srv.Port, "ssl": srv.SSL},
+			map[string]func([]any) (any, error){"stop": func([]any) (any, error) { return nil, srv.Stop() }},
+		)
+	})
 	v.accessor("config", v.bindings.Config)
 	v.accessor("info", v.bindings.Info)
 	v.accessor("scenario", v.bindings.Scenario)
 	v.accessor("feature", v.bindings.Feature)
+	for name, fn := range v.bindings.Props {
+		v.prop(name, fn)
+	}
 	for _, name := range v.custom {
 		_ = obj.Delete(name)
 	}
@@ -203,11 +219,24 @@ func (v *VM) parkWait(timeout time.Duration, wait func(time.Duration, <-chan str
 }
 
 func (v *VM) accessor(name string, fn func() map[string]any) {
-	getter := v.rt.ToValue(func(sobek.FunctionCall) sobek.Value {
+	v.prop(name, func() any {
 		if fn == nil {
-			return v.rt.NewObject()
+			return map[string]any{}
 		}
-		return v.ToValue(fn())
+		return fn()
+	})
+}
+
+func (v *VM) prop(name string, fn func() any) {
+	getter := v.rt.ToValue(func(sobek.FunctionCall) sobek.Value {
+		switch got := fn().(type) {
+		case nil:
+			return sobek.Null()
+		case sobek.Value:
+			return got
+		default:
+			return v.ToValue(got)
+		}
 	})
 	_ = v.karate.Delete(name)
 	_ = v.karate.DefineAccessorProperty(name, getter, nil, sobek.ToFlag(true), sobek.ToFlag(true))

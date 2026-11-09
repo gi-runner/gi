@@ -1,0 +1,309 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "gi feature",
+  "scopeName": "source.gi-feature",
+  "fileTypes": ["feature"],
+  "patterns": [
+    { "include": "#gi-load" },
+    { "include": "#comment" },
+    { "include": "#tags" },
+    { "include": "#section" },
+    { "include": "#docstring" },
+    { "include": "#table" },
+    { "include": "#step" }
+  ],
+  "repository": {
+    "gi-load": {
+      "name": "meta.directive.gi-load.gi-feature",
+      "begin": "^\\s*(#)\\s*(gi-load)(:)",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.comment.gi-feature" },
+        "2": { "name": "keyword.other.directive.gi-load.gi-feature" },
+        "3": { "name": "punctuation.separator.key-value.gi-feature" }
+      },
+      "end": "$",
+      "patterns": [
+        { "match": "\\b(stage|threshold)\\b", "name": "keyword.other.gi-load.gi-feature" },
+        {
+          "match": "([A-Za-z][\\w-]*)(=)",
+          "captures": {
+            "1": { "name": "variable.parameter.gi-load.gi-feature" },
+            "2": { "name": "keyword.operator.assignment.gi-feature" }
+          }
+        },
+        { "match": "<=|>=|==|!=|<|>", "name": "keyword.operator.comparison.gi-feature" },
+        { "match": "\\b\\d+(?:\\.\\d+)?(?:ms|s|m|h|%)?", "name": "constant.numeric.gi-feature" }
+      ]
+    },
+    "comment": {
+      "match": "^\\s*(#).*$",
+      "name": "comment.line.number-sign.gi-feature",
+      "captures": {
+        "1": { "name": "punctuation.definition.comment.gi-feature" }
+      }
+    },
+    "tags": {
+      "begin": "^\\s*(?=@)",
+      "end": "$",
+      "patterns": [
+        {
+          "match": "(@)([^\\s@=]+)(?:(=)(\\S*))?",
+          "name": "meta.tag.gi-feature",
+          "captures": {
+            "1": { "name": "punctuation.definition.tag.gi-feature" },
+            "2": { "name": "entity.name.tag.gi-feature" },
+            "3": { "name": "keyword.operator.assignment.gi-feature" },
+            "4": { "name": "string.unquoted.tag-value.gi-feature" }
+          }
+        },
+        {
+          "match": "(?<=\\s)(#).*$",
+          "name": "comment.line.number-sign.gi-feature",
+          "captures": {
+            "1": { "name": "punctuation.definition.comment.gi-feature" }
+          }
+        }
+      ]
+    },
+    "section": {
+      "match": "^\\s*(Feature|Rule|Background|Scenario Outline|Scenario Template|Scenario|Examples|Example|Scenarios)(:)(.*)$",
+      "captures": {
+        "1": { "name": "keyword.control.section.gi-feature" },
+        "2": { "name": "punctuation.separator.gi-feature" },
+        "3": { "name": "entity.name.section.gi-feature" }
+      }
+    },
+    "docstring": {
+      "name": "meta.docstring.gi-feature",
+      "begin": "^\\s*(\"\"\")\\s*$",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.string.begin.gi-feature" }
+      },
+      "end": "^\\s*(\"\"\")\\s*$",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.end.gi-feature" }
+      },
+      "patterns": [
+        {
+          "comment": "Karate JSON is lenient (unquoted keys, single quotes), so it uses local rules instead of source.json.",
+          "name": "meta.structure.json.gi-feature",
+          "begin": "^(?=\\s*[\\[{])",
+          "end": "(?=^\\s*\"\"\"\\s*$)",
+          "patterns": [{ "include": "#json" }]
+        },
+        {
+          "contentName": "meta.embedded.block.xml",
+          "begin": "^(?=\\s*<)",
+          "end": "(?=^\\s*\"\"\"\\s*$)",
+          "patterns": [
+            { "include": "#embedded-expression" },
+            { "include": "text.xml" }
+          ]
+        },
+        {
+          "contentName": "meta.embedded.block.javascript",
+          "begin": "^(?=\\s*(?:function\\b|\\(|[A-Za-z_$][\\w$]*\\s*=>))",
+          "end": "(?=^\\s*\"\"\"\\s*$)",
+          "patterns": [{ "include": "source.js" }]
+        },
+        {
+          "name": "string.unquoted.block.gi-feature",
+          "begin": "^(?=.)",
+          "end": "(?=^\\s*\"\"\"\\s*$)",
+          "patterns": [
+            { "include": "#embedded-expression" },
+            { "include": "#placeholder" }
+          ]
+        }
+      ]
+    },
+    "json": {
+      "patterns": [
+        {
+          "match": "([A-Za-z_$][\\w$-]*)\\s*(:)",
+          "captures": {
+            "1": { "name": "support.type.property-name.gi-feature" },
+            "2": { "name": "punctuation.separator.key-value.gi-feature" }
+          }
+        },
+        {
+          "match": "(\"(?:[^\"\\\\]|\\\\.)*\")\\s*(:)",
+          "captures": {
+            "1": { "name": "support.type.property-name.gi-feature" },
+            "2": { "name": "punctuation.separator.key-value.gi-feature" }
+          }
+        },
+        { "include": "#string" },
+        { "include": "#placeholder" },
+        { "include": "#constant" },
+        { "include": "#number" },
+        { "match": "[\\[\\]{}]", "name": "punctuation.section.gi-feature" },
+        { "match": ",", "name": "punctuation.separator.comma.gi-feature" }
+      ]
+    },
+    "table": {
+      "name": "meta.table.gi-feature",
+      "begin": "^\\s*(?=\\|)",
+      "end": "$",
+      "patterns": [
+        { "match": "\\|", "name": "punctuation.separator.table.gi-feature" },
+        { "include": "#string" },
+        { "include": "#placeholder" },
+        { "include": "#constant" },
+        { "include": "#number" }
+      ]
+    },
+    "step": {
+      "name": "meta.step.gi-feature",
+      "begin": "^\\s*(\\*|Given|When|Then|And|But)(?=\\s|$)(?:\\s+(match each|match|def|text|table|yaml|csv|string|json|xmlstring|xml|bytes|copy|set|remove|replace|eval|assert|print|url|path|params|param|headers|header|cookies|cookie|form fields|form field|multipart fields|multipart field|multipart files|multipart file|request|method|status|soap action|retry until|configure|callonce|call|driver)(?=\\s|$|\\())?",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.step.gi-feature" },
+        "2": { "name": "keyword.other.step.gi-feature" }
+      },
+      "end": "$",
+      "patterns": [{ "include": "#expression" }]
+    },
+    "expression": {
+      "patterns": [
+        { "include": "#string" },
+        { "include": "#placeholder" },
+        { "include": "#match-operator" },
+        { "include": "#builtin" },
+        { "include": "#constant" },
+        { "include": "#number" },
+        {
+          "match": "\\b([A-Za-z_$][\\w$]*)\\s*(?==(?!=))",
+          "captures": {
+            "1": { "name": "variable.other.assignment.gi-feature" }
+          }
+        },
+        { "match": "&&|\\|\\||[<>]=?|[+\\-*/%!]", "name": "keyword.operator.gi-feature" },
+        { "match": "=", "name": "keyword.operator.assignment.gi-feature" }
+      ]
+    },
+    "match-operator": {
+      "patterns": [
+        {
+          "match": "(?<![\\w!])!?(?:contains(?:\\s+(?:only|any))?(?:\\s+deep)?|within)\\b",
+          "name": "keyword.operator.match.gi-feature"
+        },
+        { "match": "==|!=", "name": "keyword.operator.comparison.gi-feature" }
+      ]
+    },
+    "builtin": {
+      "patterns": [
+        {
+          "match": "\\b(gi|karate)\\b(?:\\s*(\\.)\\s*([A-Za-z_$][\\w$]*))?",
+          "captures": {
+            "1": { "name": "support.class.gi-feature" },
+            "2": { "name": "punctuation.accessor.gi-feature" },
+            "3": { "name": "support.function.gi-feature" }
+          }
+        },
+        { "match": "\\b(call|callonce)\\b", "name": "keyword.control.call.gi-feature" },
+        { "match": "\\bread(?=\\s*\\()", "name": "support.function.read.gi-feature" },
+        {
+          "match": "\\b(response|responseStatus|responseHeaders|responseCookies|responseTime|responseType|responseBytes|requestTimeStamp|__arg|__loop|__num|__row)\\b",
+          "name": "variable.language.gi-feature"
+        }
+      ]
+    },
+    "constant": {
+      "match": "\\b(true|false|null|undefined)\\b",
+      "name": "constant.language.gi-feature"
+    },
+    "number": {
+      "match": "(?<![\\w.])-?\\d+(?:\\.\\d+)?(?![\\w.])",
+      "name": "constant.numeric.gi-feature"
+    },
+    "placeholder": {
+      "match": "(<)([A-Za-z_][\\w .-]*)(>)",
+      "name": "variable.parameter.placeholder.gi-feature",
+      "captures": {
+        "1": { "name": "punctuation.definition.placeholder.begin.gi-feature" },
+        "3": { "name": "punctuation.definition.placeholder.end.gi-feature" }
+      }
+    },
+    "string": {
+      "patterns": [
+        {
+          "name": "string.quoted.single.gi-feature",
+          "begin": "'",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.gi-feature" } },
+          "end": "'|$",
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.gi-feature" } },
+          "patterns": [{ "include": "#string-content" }]
+        },
+        {
+          "name": "string.quoted.double.gi-feature",
+          "begin": "\"",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.gi-feature" } },
+          "end": "\"|$",
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.gi-feature" } },
+          "patterns": [{ "include": "#string-content" }]
+        },
+        {
+          "name": "string.template.gi-feature",
+          "begin": "`",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.gi-feature" } },
+          "end": "`|$",
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.gi-feature" } },
+          "patterns": [
+            { "match": "\\\\.", "name": "constant.character.escape.gi-feature" },
+            {
+              "contentName": "meta.embedded.inline.javascript",
+              "begin": "\\$\\{",
+              "beginCaptures": { "0": { "name": "punctuation.definition.template-expression.begin.gi-feature" } },
+              "end": "\\}",
+              "endCaptures": { "0": { "name": "punctuation.definition.template-expression.end.gi-feature" } },
+              "patterns": [{ "include": "source.js" }]
+            }
+          ]
+        }
+      ]
+    },
+    "string-content": {
+      "patterns": [
+        { "match": "\\\\.", "name": "constant.character.escape.gi-feature" },
+        { "include": "#embedded-expression" },
+        { "include": "#fuzzy" },
+        { "include": "#placeholder" }
+      ]
+    },
+    "embedded-expression": {
+      "name": "meta.embedded-expression.gi-feature",
+      "contentName": "meta.embedded.inline.javascript",
+      "begin": "(##?)(\\()",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.embedded.gi-feature" },
+        "2": { "name": "punctuation.section.embedded.begin.gi-feature" }
+      },
+      "end": "\\)",
+      "endCaptures": {
+        "0": { "name": "punctuation.section.embedded.end.gi-feature" }
+      },
+      "patterns": [
+        { "include": "#js-parens" },
+        { "include": "source.js" }
+      ]
+    },
+    "js-parens": {
+      "begin": "\\(",
+      "end": "\\)",
+      "patterns": [
+        { "include": "#js-parens" },
+        { "include": "source.js" }
+      ]
+    },
+    "fuzzy": {
+      "patterns": [
+        {
+          "match": "##?(?:string|number|boolean|array|object|null|notnull|present|notpresent|ignore|uuid|regex)\\b",
+          "name": "support.type.fuzzy.gi-feature"
+        },
+        { "match": "##?\\?", "name": "keyword.operator.fuzzy.validator.gi-feature" },
+        { "match": "##?\\[[^\\]]*\\]", "name": "support.type.fuzzy.array.gi-feature" }
+      ]
+    }
+  }
+}

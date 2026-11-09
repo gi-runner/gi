@@ -65,7 +65,8 @@ Scenario: ok
 		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: http.NoBody, Request: r}, nil
 	})
 	result, err := Run(t.Context(), f, Config{
-		Rate: 10, Duration: time.Second, Client: &http.Client{Transport: transport},
+		Rate: 10, Duration: time.Second,
+		Client: &http.Client{Transport: transport},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -151,10 +152,12 @@ Scenario: held
 * url 'http://load.example.test/hold'
 * method get
 `)
-	_, peak := runHeld(t, f, Config{StageText: []string{
-		"users=1 duration=150ms",
-		"spike users=5 duration=400ms",
-	}})
+	_, peak := runHeld(t, f, Config{
+		StageText: []string{
+			"users=1 duration=150ms",
+			"spike users=5 duration=400ms",
+		},
+	})
 	if peak < 3 {
 		t.Fatalf("peak in flight = %d, want the spike to add users", peak)
 	}

@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help format lint vet test fuzz ci build run
+.PHONY: help format lint vet test fuzz ci build run demo
 
 help: ## Print each target with a one-line description
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "%-8s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -23,6 +23,9 @@ fuzz: ## Fuzz path mutation and XML round trips
 	go test ./internal/xml -run '^$$' -fuzz FuzzDocument -fuzztime=10s -parallel=2
 
 ci: lint vet test fuzz build ## Run formatting, lint, vet, race, fuzz, and native build checks
+
+demo: build ## Run the five-minute greeting, then the same check under load
+	./bin/gi demo
 
 build: ## Build the no-CGO CLI to bin/gi
 	mkdir -p bin

@@ -25,6 +25,6 @@ func Dial(ctx context.Context, kind string, spec map[string]any) (engine.Link, e
 	}
 }
 
-func NewPage(ctx context.Context) (engine.Page, error) {
-	return browser.Open(ctx)
+func NewPage(ctx context.Context, cfg engine.DriverConfig) (engine.Page, error) {
+	return browser.Open(ctx, cfg)
 }

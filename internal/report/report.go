@@ -177,6 +177,7 @@ type stepView struct {
 	Keyword    string      `json:"keyword"`
 	Text       string      `json:"text"`
 	Passed     bool        `json:"passed"`
+	Skipped    bool        `json:"skipped,omitempty"`
 	DurationMS float64     `json:"durationMs"`
 	Error      string      `json:"error,omitempty"`
 	Diff       string      `json:"diff,omitempty"`
@@ -313,7 +314,7 @@ func stepsView(steps []engine.StepResult) []stepView {
 	out := make([]stepView, 0, len(steps))
 	for _, st := range steps {
 		step := stepView{
-			Line: st.Line, Keyword: st.Keyword, Text: st.Text, Passed: st.Passed,
+			Line: st.Line, Keyword: st.Keyword, Text: st.Text, Passed: st.Passed, Skipped: st.Skipped,
 			DurationMS: ms(st.Duration), Error: st.Error, Diff: st.Diff, Label: st.Label, Output: st.Output,
 			Calls: stepsView(st.Calls), Embeds: embedsView(st.Embeds),
 		}
@@ -626,7 +627,7 @@ const htmlPage = `<!DOCTYPE html>
   <div class="step">
     <code>{{.Keyword}} {{.Text}}</code>
     <span class="dim">{{fmtms .DurationMS}}</span>
-    {{if not .Passed}}<span class="bad">failed</span>{{end}}
+    {{if .Skipped}}<span class="dim">skipped</span>{{else if not .Passed}}<span class="bad">failed</span>{{end}}
     {{if .Output}}<pre>{{.Output}}</pre>{{end}}
     {{range .Embeds}}{{if .Name}}<div class="dim">{{.Name}}</div>{{end}}{{if .Image}}<img alt="{{.Name}}" src="{{.Image}}">{{else}}<pre>{{.Text}}</pre>{{end}}{{end}}
     {{if .Error}}<pre>{{.Error}}</pre>{{end}}

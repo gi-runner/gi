@@ -1,0 +1,128 @@
+{
+  "name": "gi-feature",
+  "displayName": "gi feature files",
+  "description": "Syntax highlighting, snippets, and run commands for gi .feature files.",
+  "version": "1.0.0",
+  "publisher": "gi-runner",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gi-runner/gi.git",
+    "directory": "editors/vscode"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets",
+    "Testing"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "languages": [
+      {
+        "id": "gi-feature",
+        "aliases": [
+          "gi feature",
+          "gi-feature"
+        ],
+        "extensions": [
+          ".feature"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "gi-feature",
+        "scopeName": "source.gi-feature",
+        "path": "./syntaxes/gi-feature.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.javascript": "javascript",
+          "meta.embedded.inline.javascript": "javascript",
+          "meta.embedded.block.xml": "xml"
+        }
+      }
+    ],
+    "snippets": [
+      {
+        "language": "gi-feature",
+        "path": "./snippets/gi-feature.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "gi.runFile",
+        "title": "Run Feature File",
+        "category": "gi",
+        "icon": "$(play)"
+      },
+      {
+        "command": "gi.runScenario",
+        "title": "Run Scenario (runs the whole file)",
+        "category": "gi"
+      },
+      {
+        "command": "gi.loadFile",
+        "title": "Load Test Feature File",
+        "category": "gi"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "gi.runFile",
+          "when": "editorLangId == gi-feature"
+        },
+        {
+          "command": "gi.runScenario",
+          "when": "editorLangId == gi-feature"
+        },
+        {
+          "command": "gi.loadFile",
+          "when": "editorLangId == gi-feature"
+        }
+      ],
+      "editor/title/run": [
+        {
+          "command": "gi.runFile",
+          "when": "resourceLangId == gi-feature"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "gi.runFile",
+          "when": "resourceLangId == gi-feature",
+          "group": "gi@1"
+        },
+        {
+          "command": "gi.loadFile",
+          "when": "resourceLangId == gi-feature",
+          "group": "gi@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "gi",
+      "properties": {
+        "gi.path": {
+          "type": "string",
+          "default": "gi",
+          "scope": "machine-overridable",
+          "markdownDescription": "Path to the `gi` executable used by the run and load commands."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/vscode": "1.90.0",
+    "typescript": "^5.4.0"
+  }
+}

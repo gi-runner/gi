@@ -1,0 +1,43 @@
+version: 2
+
+project_name: gi
+
+builds:
+  - main: ./cmd/gi
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/gi-runner/gi/internal/cli.version={{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files: [LICENSE, NOTICE, README.md]
+
+checksum:
+  name_template: checksums.txt
+
+homebrew_casks:
+  - name: gi
+    repository:
+      owner: gi-runner
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    skip_upload: "{{ if not .Env.HOMEBREW_TAP_TOKEN }}true{{ end }}"
+    homepage: https://github.com/gi-runner/gi
+    description: Run feature files as API, browser, mock, and load tests in one binary
+    license: Apache-2.0
+    hooks:
+      post:
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/gi"]
+          end
+
+changelog:
+  use: github

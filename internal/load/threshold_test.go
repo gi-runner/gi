@@ -5,6 +5,26 @@ import (
 	"time"
 )
 
+func TestAbortStopsAFailedThreshold(t *testing.T) {
+	parsed, err := ParseThresholds([]string{"errorRate < 1% abort"})
+	if err != nil || len(parsed) != 1 || !parsed[0].abort {
+		t.Fatalf("parse: %v %+v", err, parsed)
+	}
+	stopped := false
+	s := &session{
+		th:         parsed,
+		stop:       func() { stopped = true },
+		collectors: []collector{{iters: 10}},
+		recordAt:   time.Now().Add(-time.Second),
+		started:    time.Now().Add(-time.Second),
+	}
+	s.failures.Store(4)
+	s.maybeAbort()
+	if !stopped || s.runErr == nil {
+		t.Fatalf("stopped %v err %v", stopped, s.runErr)
+	}
+}
+
 func TestCallSiteThreshold(t *testing.T) {
 	const name = "orders.feature:14 GET /orders"
 	parsed, err := ParseThresholds([]string{"p95 < 50ms " + name, "errorRate < 1% " + name})

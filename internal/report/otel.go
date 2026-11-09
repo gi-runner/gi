@@ -11,7 +11,10 @@ import (
 	"strconv"
 	"time"
 
+	"strings"
+
 	"github.com/gi-runner/gi/internal/engine"
+	"github.com/gi-runner/gi/internal/load"
 )
 
 func ExportOTLP(ctx context.Context, endpoint string, doc Document) error {
@@ -44,6 +47,80 @@ func ExportOTLP(ctx context.Context, endpoint string, doc Document) error {
 		return fmt.Errorf("otel collector returned %s", resp.Status)
 	}
 	return nil
+}
+
+// ExportLoadMetrics posts one OTLP/HTTP JSON gauge set for a finished load run.
+// A traces URL ending in /v1/traces is sent to the sibling /v1/metrics path.
+func ExportLoadMetrics(ctx context.Context, endpoint string, results []load.Result) error {
+	if endpoint == "" || len(results) == 0 {
+		return nil
+	}
+	when := time.Now()
+	var metrics []any
+	for _, res := range results {
+		sec := res.Elapsed.Seconds()
+		if sec <= 0 {
+			sec = 1
+		}
+		metrics = append(metrics,
+			sum("gi.http.reqs", float64(res.Requests), when),
+			sum("gi.http.req_failed", float64(res.FailedIterations), when),
+			gauge("gi.http.req_rate", float64(res.Requests)/sec, when),
+			gauge("gi.http.p95", res.Overall.P95.Seconds(), when),
+		)
+	}
+	payload := map[string]any{"resourceMetrics": []any{map[string]any{
+		"resource": map[string]any{"attributes": []any{attr("service.name", "gi")}},
+		"scopeMetrics": []any{map[string]any{
+			"scope":   map[string]any{"name": "gi"},
+			"metrics": metrics,
+		}},
+	}}}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, metricsURL(endpoint), bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("otel metrics collector returned %s", resp.Status)
+	}
+	return nil
+}
+
+func metricsURL(endpoint string) string {
+	if strings.Contains(endpoint, "/v1/traces") {
+		return strings.Replace(endpoint, "/v1/traces", "/v1/metrics", 1)
+	}
+	if strings.Contains(endpoint, "/v1/metrics") {
+		return endpoint
+	}
+	return strings.TrimRight(endpoint, "/") + "/v1/metrics"
+}
+
+func gauge(name string, v float64, when time.Time) map[string]any {
+	return map[string]any{"name": name, "gauge": map[string]any{"dataPoints": []any{point(v, when)}}}
+}
+
+func sum(name string, v float64, when time.Time) map[string]any {
+	return map[string]any{"name": name, "sum": map[string]any{
+		"aggregationTemporality": 2,
+		"isMonotonic":            true,
+		"dataPoints":             []any{point(v, when)},
+	}}
+}
+
+func point(v float64, when time.Time) map[string]any {
+	return map[string]any{"asDouble": v, "timeUnixNano": strconv.FormatInt(when.UnixNano(), 10)}
 }
 
 func spansOf(doc Document) []any {

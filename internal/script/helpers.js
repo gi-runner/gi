@@ -1,4 +1,4 @@
-(function(k) {
+(function(k, native) {
     k.keysOf = function(x) { return Object.keys(x); };
     k.valuesOf = function(x) {
         return Object.keys(x).map(function(key) { return x[key]; });
@@ -95,8 +95,190 @@
         return typeof x === 'string' ? x.toLowerCase() : JSON.parse(JSON.stringify(x).toLowerCase());
     };
     k.pretty = function(x) { return x && x.__xml === true ? x.toString() : JSON.stringify(x, null, 2); };
-    k.toString = function(x) { return x && x.__xml === true ? x.toString() : typeof x === 'string' ? x : JSON.stringify(x); };
+    k.toString = function(x) {
+        var text = native.text(x);
+        if (text !== null) return text;
+        return x && x.__xml === true ? x.toString() : JSON.stringify(x);
+    };
     k.fail = function(message) {
         throw Error(message === undefined ? 'explicit failure' : String(message));
     };
+    k.toCsv = function(list) {
+        if (list == null || (Array.isArray(list) && list.length === 0)) return '';
+        if (!Array.isArray(list)) throw Error('toCsv expects a list of objects');
+        function cell(x) {
+            var s = x == null ? '' : typeof x === 'object' ? JSON.stringify(x) : String(x);
+            return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+        }
+        var keys = Object.keys(list[0]);
+        var rows = [keys.map(cell).join(',')];
+        list.forEach(function(row) {
+            rows.push(Object.keys(row).map(function(key) { return cell(row[key]); }).join(','));
+        });
+        return rows.join('\r\n') + '\r\n';
+    };
+    k.expect = function(subject) { return expectation(subject, false); };
+
+    // Chai-style assertions: property getters such as .true assert on read.
+    function expectation(subject, negated) {
+        function check(pass, message) {
+            if (pass === negated) throw Error(negated ? 'expected condition to be false' : message);
+        }
+        function next(s) { return expectation(arguments.length ? s : subject, false); }
+        function by(op) {
+            return function(expected) {
+                var r = native.match(subject, expected, op);
+                check(r.pass, r.message);
+                return next();
+            };
+        }
+        function plain(x) { return x !== null && typeof x === 'object' && !Array.isArray(x); }
+        function keys(op) {
+            return function(expected) {
+                if (plain(subject)) {
+                    var r = native.match(Object.keys(subject), expected, op);
+                    check(r.pass, r.message);
+                } else {
+                    check(false, 'not an object');
+                }
+                return next();
+            };
+        }
+        function numeric(word, test) {
+            return function(rhs) {
+                check(typeof subject === 'number' && typeof rhs === 'number' && test(subject, rhs),
+                    subject + ' is not ' + word + ': ' + rhs);
+                return next();
+            };
+        }
+        function state(word, pass, shown) {
+            return function() { check(pass(), 'actual: ' + subject + ', expected: ' + (shown || word)); return next(); };
+        }
+        function api(methods, getters) {
+            var o = Object.assign({}, methods);
+            Object.keys(getters).forEach(function(name) {
+                Object.defineProperty(o, name, {get: getters[name]});
+            });
+            return o;
+        }
+        function typeName(x) { return x === null ? 'null' : Array.isArray(x) ? 'array' : typeof x; }
+        function typed(expected) {
+            check(typeName(subject) === String(expected), 'actual: ' + typeName(subject) + ', expected: ' + expected);
+            return next();
+        }
+        function walk(x, path) {
+            var parts = String(path).match(/[^.[\]]+/g) || [];
+            for (var i = 0; i < parts.length; i++) {
+                if (x === null || typeof x !== 'object' || !Object.prototype.hasOwnProperty.call(x, parts[i])) return {found: false};
+                x = x[parts[i]];
+            }
+            return {found: true, value: x};
+        }
+        function empty() {
+            if (typeof subject === 'string') return subject.length === 0;
+            if (Array.isArray(subject)) return subject.length === 0;
+            return plain(subject) && Object.keys(subject).length === 0;
+        }
+        var be, to, have;
+        be = api({
+            a: typed, an: typed,
+            oneOf: function(list) {
+                var r = native.match(list, subject, 'contains');
+                check(r.pass, r.message);
+                return next();
+            },
+            above: numeric('above', function(a, b) { return a > b; }),
+            below: numeric('below', function(a, b) { return a < b; }),
+            within: function(lo, hi) {
+                check(subject >= lo && subject <= hi, subject + ' not within ' + lo + ', ' + hi);
+                return next();
+            },
+            closeTo: function(expected, delta) {
+                check(Math.abs(subject - expected) <= delta, subject + ' not close to ' + expected + ' ± ' + delta);
+                return next();
+            }
+        }, {
+            not: function() { return expectation(subject, !negated).to.be; },
+            that: function() { return be; }, and: function() { return be; }, which: function() { return be; },
+            true: state('true', function() { return subject === true; }),
+            false: state('false', function() { return subject === false; }),
+            null: state('null', function() { return subject === null; }),
+            undefined: state('undefined', function() { return subject == null; }),
+            ok: state('ok', function() { return !!subject; }, '(truthy)'),
+            empty: state('empty', empty, '(empty)'),
+            at: function() {
+                return {
+                    least: numeric('at least', function(a, b) { return a >= b; }),
+                    most: numeric('at most', function(a, b) { return a <= b; })
+                };
+            }
+        });
+        be.approximately = be.closeTo;
+        ['true', 'false', 'null', 'undefined'].forEach(function(name) {
+            Object.defineProperty(be, '_' + name, Object.getOwnPropertyDescriptor(be, name));
+        });
+        have = api({
+            length: function(n) {
+                if (typeof n !== 'number') { check(false, 'not a number: ' + n); return next(); }
+                var size = typeof subject === 'string' || Array.isArray(subject) ? subject.length :
+                    plain(subject) ? subject.length : undefined;
+                check(size === n, 'actual: ' + JSON.stringify(subject) + ', expected: (length=' + n + ')');
+                return next();
+            },
+            property: function(name, expected) {
+                if (!plain(subject)) { check(false, 'not an object'); return next(); }
+                var has = Object.prototype.hasOwnProperty.call(subject, name);
+                if (arguments.length > 1 && has) {
+                    var r = native.match(subject[name], expected, '==');
+                    check(r.pass, r.message);
+                } else check(has, arguments.length > 1 ? 'property ' + name + ' not found' : 'does not contain property: ' + name);
+                return has && subject[name] != null ? next(subject[name]) : next();
+            },
+            keys: keys('contains only')
+        }, {
+            not: function() { return expectation(subject, !negated).to.have; },
+            that: function() { return have; }, and: function() { return have; }, which: function() { return have; },
+            all: function() { return {keys: keys('contains')}; },
+            any: function() { return {keys: keys('contains any')}; },
+            nested: function() {
+                return {property: function(path, expected) {
+                    var got = walk(subject, path);
+                    if (arguments.length > 1 && got.found) {
+                        var r = native.match(got.value, expected, '==');
+                        check(r.pass, r.message);
+                    } else {
+                        check(got.found, 'expected to have property: ' + path);
+                    }
+                    return next();
+                }};
+            }
+        });
+        to = api({
+            equal: by('=='), eql: by('=='),
+            include: by('contains'), contain: by('contains'),
+            match: function(re) {
+                if (typeof subject !== 'string') check(false, 'not a string');
+                else if (!(re instanceof RegExp)) check(false, 'not a regex: ' + re);
+                else check(re.test(subject), 'actual: ' + subject + ', expected: ' + re);
+                return next();
+            }
+        }, {
+            not: function() { return expectation(subject, !negated).to; },
+            that: function() { return to; }, and: function() { return to; }, which: function() { return to; },
+            deep: function() { return {include: by('contains deep')}; },
+            be: function() { return be; },
+            have: function() { return have; },
+            exist: state('exist', function() { return subject != null; }, '(exists)')
+        });
+        var self = api({
+            include: by('contains'), contain: by('contains'), equal: by('=='), eql: by('==')
+        }, {
+            to: function() { return to; },
+            not: function() { return expectation(subject, true); },
+            that: function() { return self; }, and: function() { return self; }, which: function() { return self; },
+            be: function() { return be; }, is: function() { return be; },
+            have: function() { return have; }, has: function() { return have; }
+        });
+        return self;
+    }
 });

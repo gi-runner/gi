@@ -91,7 +91,9 @@ OAuth2 is the client-credentials grant. The first request of the scenario posts 
 * method get
 ```
 
-`retry until` applies to the next `method` only. `count` is the maximum total number of attempts. `interval` is the pause between attempts, in milliseconds. Each attempt uses the request timeout. Header hooks and request hooks run on every attempt.
+`retry until` applies to the next `method` only. `count` is the maximum total number of attempts. `interval` is the pause between attempts, in milliseconds. Each attempt uses the request timeout. A `configure headers` function runs on every attempt.
+
+`configure httpRetryEnabled = true` also retries requests that fail to connect or get no response, using the same `count` and `interval`, without a `retry until`.
 
 ## Headers from config
 
@@ -114,6 +116,9 @@ Add `cert` and `key` for mutual TLS. `algorithm` accepts `TLS`, `TLSv1.2` or `TL
 | `configure connectTimeout = 5000` | TCP connection timeout in milliseconds. |
 | `configure proxy = 'http://localhost:8080'` | Send requests through a proxy. |
 | `configure proxy = null` | Disable the proxy. |
+| `configure localAddress = '10.0.0.5'` | Send from this local IP address. |
+| `configure cookies = { session: 'abc' }` | Send these cookies on every request. `null` clears them. |
+| `configure charset = 'utf-8'` | Add `; charset=utf-8` to a body's `Content-Type` that has none. `null` turns it off, the default. |
 | `soap action 'urn:operation'` | Set `SOAPAction`, use `text/xml` and send POST. |
 
 A proxy object accepts `uri`, `username`, `password` and `nonProxyHosts` (Go glob patterns). TLS, proxy and connection settings require a standard Go HTTP transport when using a [custom Go client](embedding.md).

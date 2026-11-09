@@ -50,11 +50,26 @@ type intercept struct {
 	body    string
 }
 
-func Open(ctx context.Context) (engine.Page, error) {
+// Open launches Chrome with the configure driver settings.
+func Open(ctx context.Context, cfg engine.DriverConfig) (engine.Page, error) {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", true),
+		chromedp.Flag("headless", cfg.Headless),
 		chromedp.Flag("disable-gpu", true),
 	)
+	if cfg.Executable != "" {
+		opts = append(opts, chromedp.ExecPath(cfg.Executable))
+	}
+	if cfg.UserDataDir != "" {
+		opts = append(opts, chromedp.UserDataDir(cfg.UserDataDir))
+	}
+	for _, arg := range cfg.Args {
+		name, val, hasVal := strings.Cut(strings.TrimLeft(arg, "-"), "=")
+		if hasVal {
+			opts = append(opts, chromedp.Flag(name, val))
+		} else {
+			opts = append(opts, chromedp.Flag(name, true))
+		}
+	}
 	// Restricted CI hosts may need an explicit sandbox opt-out.
 	if os.Getenv("GI_CHROME_NO_SANDBOX") == "true" {
 		opts = append(opts, chromedp.NoSandbox)

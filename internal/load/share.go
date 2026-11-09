@@ -7,15 +7,14 @@ import (
 	"slices"
 )
 
-// Share gives injector index one portion of a normalized profile.
-// The parent keeps the thresholds and judges them after the portions merge.
+// Share gives part index one portion of a normalized profile. A split part
+// judges no thresholds; the merge judges them for the whole profile.
 func Share(cfg Config, index, n int) (Config, error) {
 	if n <= 0 || index < 0 || index >= n {
-		return Config{}, errors.New("injector share is out of range")
+		return Config{}, errors.New("load part is out of range")
 	}
 	out := cfg
 	out.Stages = slices.Clone(cfg.Stages)
-	out.Injectors = 1
 	if n == 1 {
 		out.Thresholds = append([]string{}, cfg.Thresholds...)
 		return out, nil
@@ -28,7 +27,7 @@ func Share(cfg Config, index, n int) (Config, error) {
 			st.To = splitLevel(st.To, st.Rate, index, n)
 		}
 		if err := validateStage(*st); err != nil {
-			return Config{}, fmt.Errorf("injector %d of %d: %w", index+1, n, err)
+			return Config{}, fmt.Errorf("part %d of %d: %w", index+1, n, err)
 		}
 	}
 	rps, err := splitCap(cfg.RPS, index, n, "the request cap")
@@ -80,7 +79,7 @@ func splitCap(total, index, n int, name string) (int, error) {
 	}
 	got := splitCount(total, index, n)
 	if got < 1 {
-		return 0, fmt.Errorf("injector %d of %d has no share of %s", index+1, n, name)
+		return 0, fmt.Errorf("part %d of %d has no share of %s", index+1, n, name)
 	}
 	return got, nil
 }

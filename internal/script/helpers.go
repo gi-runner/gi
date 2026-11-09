@@ -5,8 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
+	"sync"
 
+	"github.com/gi-runner/gi/internal/match"
 	"github.com/gi-runner/gi/internal/value"
 	"github.com/gi-runner/gi/internal/xml"
 	"github.com/grafana/sobek"
@@ -20,12 +23,55 @@ var helpers string
 
 var helperProgram = mustCompileHelpers()
 
+var builtins = sync.OnceValue(func() map[string]bool {
+	v := New()
+	out := map[string]bool{}
+	if v.Bind(Bindings{}) != nil || v.initializeAPI() != nil {
+		return out
+	}
+	for _, k := range v.karate.Keys() {
+		out[k] = true
+	}
+	for _, k := range []string{"config", "info", "scenario", "feature", "env"} {
+		out[k] = true
+	}
+	return out
+})
+
+// Builtin reports whether name is part of the karate object.
+func Builtin(name string) bool { return builtins()[name] }
+
+var modes = map[string]match.Mode{
+	"==": match.Equals, "contains": match.Contains, "contains deep": match.ContainsDeep,
+	"contains only": match.ContainsOnly, "contains any": match.ContainsAny,
+}
+
 func mustCompileHelpers() *sobek.Program {
 	p, err := sobek.Compile("karate-helpers", helpers, false)
 	if err != nil {
 		panic(err)
 	}
 	return p
+}
+
+// Properties is the process environment, plus karate.env when --env is set.
+func Properties(env string) map[string]any {
+	out := map[string]any{}
+	for _, kv := range os.Environ() {
+		k, v, _ := strings.Cut(kv, "=")
+		out[k] = v
+	}
+	if env != "" {
+		out["karate.env"] = env
+	}
+	return out
+}
+
+func lookupProp(name, env string) (string, bool) {
+	if name == "karate.env" && env != "" {
+		return env, true
+	}
+	return os.LookupEnv(name)
 }
 
 func (v *VM) bindHelpers(obj *sobek.Object) error {
@@ -101,6 +147,20 @@ func (v *VM) bindHelpers(obj *sobek.Object) error {
 	_ = obj.Set("readAsString", func(ref string) (string, error) { b, err := v.Bytes(ref); return string(b), err })
 	_ = obj.Set("readAsBytes", v.Bytes)
 	_ = obj.Set("toBytes", func(x sobek.Value) []byte { return []byte(x.String()) })
+	_ = obj.Set("fromCsv", value.ParseCSV)
+	_ = obj.Set("sysprop", func(call sobek.FunctionCall) sobek.Value {
+		if missing(call.Argument(0)) {
+			panic(v.rt.NewGoError(errors.New("sysprop needs a name")))
+		}
+		got, ok := lookupProp(call.Argument(0).String(), v.bindings.Env)
+		if ok {
+			return v.rt.ToValue(got)
+		}
+		if len(call.Arguments) > 1 {
+			return call.Argument(1)
+		}
+		return sobek.Null()
+	})
 	initializer, err := v.rt.RunProgram(helperProgram)
 	if err != nil {
 		return fmt.Errorf("initialize built-in helpers: %w", err)
@@ -109,7 +169,27 @@ func (v *VM) bindHelpers(obj *sobek.Object) error {
 	if !ok {
 		return errors.New("built-in helper initializer is not a function")
 	}
-	if _, err := fn(sobek.Undefined(), obj); err != nil {
+	native := v.object(map[string]any{
+		"match": func(actual, expected sobek.Value, op string) (map[string]any, error) {
+			mode, ok := modes[op]
+			if !ok {
+				return nil, fmt.Errorf("unknown match operator %q", op)
+			}
+			res := v.compare(actual, expected, mode)
+			return matchResult(res.Pass, res.Message), res.Err
+		},
+		"text": func(x sobek.Value) any {
+			switch raw := x.Export().(type) {
+			case string:
+				return raw
+			case []byte:
+				return string(raw)
+			default:
+				return nil
+			}
+		},
+	})
+	if _, err := fn(sobek.Undefined(), obj, native); err != nil {
 		return fmt.Errorf("initialize built-in helpers: %w", err)
 	}
 	return nil

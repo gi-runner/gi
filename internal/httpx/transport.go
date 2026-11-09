@@ -68,8 +68,12 @@ func (c *client) transport(settings engine.TransportSettings) (http.RoundTripper
 			}
 		}
 	}
-	if settings.ConnectTimeout > 0 {
-		t.DialContext = (&net.Dialer{Timeout: settings.ConnectTimeout, KeepAlive: 30 * time.Second}).DialContext
+	if settings.ConnectTimeout > 0 || settings.LocalAddr != "" {
+		d := &net.Dialer{Timeout: settings.ConnectTimeout, KeepAlive: 30 * time.Second}
+		if settings.LocalAddr != "" {
+			d.LocalAddr = &net.TCPAddr{IP: net.ParseIP(settings.LocalAddr)}
+		}
+		t.DialContext = d.DialContext
 	}
 	if c.transports == nil {
 		c.transports = make(map[engine.TransportSettings]*http.Transport)

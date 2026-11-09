@@ -21,6 +21,12 @@ type programCache struct {
 
 var programs programCache
 
+// Compiles reports whether source is a JavaScript expression or statement.
+func Compiles(source string) bool {
+	_, err := programs.compile(source)
+	return err == nil
+}
+
 func (c *programCache) compile(source string) (*sobek.Program, error) {
 	c.mu.RLock()
 	program := c.entries[source]

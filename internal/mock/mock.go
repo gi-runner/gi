@@ -17,15 +17,52 @@ import (
 	"github.com/grafana/sobek"
 )
 
-func Handler(f *feature.File) http.Handler {
+// Options adjust a mock beyond what its feature file declares.
+type Options struct {
+	Arg        map[string]any
+	PathPrefix string
+}
+
+const allowedMethods = "GET, HEAD, POST, PUT, DELETE, PATCH"
+
+func Handler(f *feature.File) http.Handler { return New(context.Background(), f, Options{}) }
+
+// New runs the mock Background under ctx and serves the scenarios after it.
+func New(ctx context.Context, f *feature.File, opt Options) http.Handler {
 	st := &store{data: map[string]any{}}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	runtime, initErr := engine.NewMockRuntime(ctx, f, func(vm *script.VM) { st.bind(vm); bindMatchers(vm) })
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	runtime, initErr := engine.NewMockRuntime(ctx, f, func(vm *script.VM) {
+		st.bind(vm)
+		bindMatchers(vm)
+		for k, v := range opt.Arg {
+			vm.Set(k, v)
+		}
+	})
 	cancel()
+	var cors bool
+	var defaults map[string]any
+	if initErr == nil {
+		cors, defaults = runtime.Settings()
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if initErr != nil {
 			write(w, http.StatusInternalServerError, map[string]any{"error": initErr.Error()})
 			return
+		}
+		if cors {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			if r.Method == http.MethodOptions {
+				w.Header().Set("Allow", allowedMethods)
+				w.Header().Set("Access-Control-Allow-Methods", allowedMethods)
+				if asked := r.Header.Get("Access-Control-Request-Headers"); asked != "" {
+					w.Header().Set("Access-Control-Allow-Headers", asked)
+				}
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+		}
+		if opt.PathPrefix != "" {
+			r.URL.Path = "/" + strings.TrimLeft(strings.TrimPrefix(r.URL.Path, opt.PathPrefix), "/")
 		}
 		body, err := io.ReadAll(io.LimitReader(r.Body, (1<<20)+1))
 		if err != nil {
@@ -66,16 +103,9 @@ func Handler(f *feature.File) http.Handler {
 			write(w, http.StatusInternalServerError, map[string]any{"error": "invalid responseStatus"})
 			return
 		}
+		setHeaders(w.Header(), defaults)
 		if h, ok := value.AsMap(res.Vars["responseHeaders"]); ok {
-			for k, v := range h {
-				if values, ok := value.AsSlice(v); ok {
-					for _, x := range values {
-						w.Header().Add(k, value.Sprint(x))
-					}
-				} else {
-					w.Header().Set(k, value.Sprint(v))
-				}
-			}
+			setHeaders(w.Header(), h)
 		}
 		if delay, ok := value.AsInt(res.Vars["responseDelay"]); ok && delay > 0 {
 			timer := time.NewTimer(time.Duration(delay) * time.Millisecond)
@@ -88,6 +118,19 @@ func Handler(f *feature.File) http.Handler {
 		}
 		write(w, status, res.Vars["response"])
 	})
+}
+
+func setHeaders(dst http.Header, src map[string]any) {
+	for k, v := range src {
+		dst.Del(k)
+		if values, ok := value.AsSlice(v); ok {
+			for _, x := range values {
+				dst.Add(k, value.Sprint(x))
+			}
+		} else {
+			dst.Set(k, value.Sprint(v))
+		}
+	}
 }
 
 func bindMatchers(vm *script.VM) {

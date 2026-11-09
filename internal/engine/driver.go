@@ -33,7 +33,7 @@ func (e *exec) driverCall(name string, args []any) (any, error) {
 			if e.opt.NewPage == nil {
 				return nil, errors.New("browser is not available")
 			}
-			page, err := e.opt.NewPage(e.ctx)
+			page, err := e.opt.NewPage(e.ctx, e.sess.driver)
 			if err != nil {
 				return nil, err
 			}

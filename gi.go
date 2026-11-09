@@ -4,15 +4,20 @@ package gi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"runtime"
+	"strings"
+	"testing"
 	"time"
 
 	"github.com/gi-runner/gi/internal/adapters"
 	"github.com/gi-runner/gi/internal/engine"
 	"github.com/gi-runner/gi/internal/feature"
 	"github.com/gi-runner/gi/internal/httpx"
+	"github.com/gi-runner/gi/internal/mock"
 	"github.com/gi-runner/gi/internal/suite"
 )
 
@@ -26,6 +31,74 @@ type Options struct {
 	Timeout time.Duration
 	Client  *http.Client
 	Output  io.Writer
+	// Steps handle step text that no built-in keyword claims, in order.
+	Steps []Step
+	// Helpers are added to the karate object for this run only.
+	Helpers map[string]func([]any) (any, error)
+}
+
+// Step runs Go code for matching step text, as godog steps do.
+// Pattern is a regular expression, or a cucumber expression with {string}, {int}, {float}, and {word}.
+// It must match the whole text. Groups become args. {string} is a double-quoted value, without the quotes.
+type Step struct {
+	Pattern string
+	Run     func(ctx context.Context, sc *Scope, args []string) error
+}
+
+// Scope gives a Go step the scenario's variables and the step's attachments.
+type Scope = engine.Scope
+
+// compile anchors the step patterns and validates the helper names.
+func (opt Options) compile() ([]engine.StepDef, error) {
+	if err := engine.CheckHelpers(opt.Helpers); err != nil {
+		return nil, err
+	}
+	defs := make([]engine.StepDef, len(opt.Steps))
+	for i, s := range opt.Steps {
+		if s.Run == nil {
+			return nil, fmt.Errorf("step %q has no Run", s.Pattern)
+		}
+		re, err := compileStep(s.Pattern)
+		if err != nil {
+			return nil, fmt.Errorf("step %q: %w", s.Pattern, err)
+		}
+		defs[i] = engine.StepDef{Pattern: re, Run: s.Run}
+	}
+	return defs, nil
+}
+
+func compileStep(pattern string) (*regexp.Regexp, error) {
+	if strings.Contains(pattern, "{int}") || strings.Contains(pattern, "{float}") ||
+		strings.Contains(pattern, "{word}") || strings.Contains(pattern, "{string}") {
+		return compileCucumber(pattern)
+	}
+	return regexp.Compile(`^(?:` + pattern + `)$`)
+}
+
+func compileCucumber(pattern string) (*regexp.Regexp, error) {
+	var b strings.Builder
+	b.WriteString("^(?:")
+	for i := 0; i < len(pattern); {
+		switch {
+		case strings.HasPrefix(pattern[i:], "{int}"):
+			b.WriteString(`(-?\d+)`)
+			i += len("{int}")
+		case strings.HasPrefix(pattern[i:], "{float}"):
+			b.WriteString(`(-?\d+(?:\.\d+)?)`)
+			i += len("{float}")
+		case strings.HasPrefix(pattern[i:], "{word}"):
+			b.WriteString(`(\S+)`)
+			i += len("{word}")
+		case strings.HasPrefix(pattern[i:], "{string}"):
+			b.WriteString(`"([^"]*)"`)
+			i += len("{string}")
+		default:
+			b.WriteString(regexp.QuoteMeta(pattern[i : i+1]))
+			i++
+		}
+	}
+	b.WriteString(")$")
+	return regexp.Compile(b.String())
 }
 
 // FileResult is the result of one feature file, including its scenarios and steps.
@@ -56,6 +129,10 @@ func Run(ctx context.Context, paths []string, opt Options) ([]FileResult, error)
 	if len(paths) == 0 {
 		return nil, errors.New("at least one feature path is required")
 	}
+	steps, err := opt.compile()
+	if err != nil {
+		return nil, err
+	}
 	files := make([]*feature.File, len(paths))
 	for i, path := range paths {
 		f, err := feature.ParseFile(path)
@@ -73,7 +150,8 @@ func Run(ctx context.Context, paths []string, opt Options) ([]FileResult, error)
 	results, err := engine.RunFiles(ctx, files, engine.Options{
 		Vars: opt.Vars, Env: opt.Env, Tag: opt.Tags, Jobs: jobs, Timeout: opt.Timeout,
 		HTTP: sender, Stdout: opt.Output, Suite: suite.Open(paths[0], opt.Env),
-		Dial: adapters.Dial, NewPage: adapters.NewPage,
+		Dial: adapters.Dial, NewPage: adapters.NewPage, StartMock: mock.Start,
+		Steps: steps, Helpers: opt.Helpers,
 	}, nil)
 	if ctx.Err() != nil {
 		return results, ctx.Err()
@@ -92,4 +170,52 @@ func Run(ctx context.Context, paths []string, opt Options) ([]FileResult, error)
 		}
 	}
 	return results, err
+}
+
+// Finding is a step, configure key, or tag that gi cannot run as written.
+type Finding = engine.Finding
+
+// Check parses the feature files and reports what gi cannot run, without
+// running anything. Steps in opt count as defined.
+func Check(paths []string, opt Options) ([]Finding, error) {
+	steps, err := opt.compile()
+	if err != nil {
+		return nil, err
+	}
+	var out []Finding
+	for _, path := range paths {
+		f, err := feature.ParseFile(path)
+		if err != nil {
+			return out, err
+		}
+		out = append(out, engine.Check(f, steps)...)
+	}
+	return out, nil
+}
+
+// Test runs the feature files and reports each scenario as a subtest named
+// feature/scenario. Output defaults to t.Output().
+func Test(t *testing.T, opt Options, paths ...string) {
+	t.Helper()
+	if opt.Output == nil {
+		opt.Output = t.Output()
+	}
+	results, err := Run(t.Context(), paths, opt)
+	for _, f := range results {
+		t.Run(f.Name, func(t *testing.T) {
+			for _, sc := range f.Scenarios {
+				t.Run(sc.Name, func(t *testing.T) {
+					switch {
+					case sc.Skipped:
+						t.Skip("not selected")
+					case !sc.Passed:
+						t.Error(sc.Error)
+					}
+				})
+			}
+		})
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
 }

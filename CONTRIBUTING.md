@@ -21,3 +21,7 @@ python3 -m venv .venv
 Before submitting, run `.venv/bin/mkdocs build --strict`.
 
 CI runs Go checks on Linux, macOS and Windows. The Docs workflow checks pull requests and deploys the site from `main`. In repository settings, select **GitHub Actions** as the GitHub Pages source before the first deployment.
+
+## Release
+
+Push an annotated tag such as `v1.0.0`. `.github/workflows/release.yml` builds archives, checksums, and the `ghcr.io/gi-runner/gi` image with GoReleaser.
