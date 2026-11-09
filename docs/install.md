@@ -64,9 +64,9 @@ Once `gi version` works, follow the [quick start](quickstart.md). Multi-line she
 
 `gi check features/` reports JVM-only calls and tags gi cannot run, without executing the files.
 
-The [VS Code extension](https://github.com/gi-runner/gi/tree/main/editors/vscode) highlights `* def` and `* match`, and runs the open feature file. Open `editors/vscode` in VS Code and use **Run Extension**.
+The [VS Code extension](https://github.com/gi-runner/gi/tree/main/editors/vscode) highlights a feature file, completes the short snippets, and runs the open file. Open that folder and use **Run Extension**.
 
-GoLand and IntelliJ read the TextMate bundle at `editors/idea/gi.tmbundle`. In **Settings → Editor → TextMate Bundles**, add that directory. A failed step prints `file:line` in the terminal. That is the debugger for the first hour: the failing step, then `report.html`.
+GoLand and IntelliJ highlight the same files from `editors/idea/gi.tmbundle` (**Settings → Editor → TextMate Bundles**). A failed step prints `file:line`.
 
 From a checkout, before a tagged release exists:
 

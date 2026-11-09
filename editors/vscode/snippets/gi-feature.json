@@ -64,7 +64,7 @@
   },
   "call read": {
     "prefix": "call",
-    "body": "* def ${1:result} = call read('${2:other.feature}')${3: { ${4:arg}: ${5:value} \\}}",
+    "body": "* def ${1:result} = call read('${2:other.feature}')",
     "description": "Call another feature file"
   },
   "Doc string": {

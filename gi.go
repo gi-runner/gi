@@ -37,9 +37,8 @@ type Options struct {
 	Helpers map[string]func([]any) (any, error)
 }
 
-// Step runs Go code for matching step text, as godog steps do.
-// Pattern is a regular expression, or a cucumber expression with {string}, {int}, {float}, and {word}.
-// It must match the whole text. Groups become args. {string} is a double-quoted value, without the quotes.
+// Step runs Go for step text no built-in keyword claims.
+// Pattern is a regexp or a cucumber expression ({string}, {int}, {float}, {word}) of the whole line.
 type Step struct {
 	Pattern string
 	Run     func(ctx context.Context, sc *Scope, args []string) error
@@ -122,9 +121,8 @@ func Register(name string, fn func([]any) (any, error)) error {
 // Unregister removes a function added by Register.
 func Unregister(name string) { engine.Unregister(name) }
 
-// Run executes the named feature files. Failed assertions are represented in the
-// results; errors report parsing, setup, or cancellation failures. Check Passed
-// on every result, even when err is nil. Directories are not expanded by this API.
+// Run executes the named feature files. Assertion failures are on the results.
+// Errors are parse, setup, or cancellation. Check Passed on every result. Paths are files.
 func Run(ctx context.Context, paths []string, opt Options) ([]FileResult, error) {
 	if len(paths) == 0 {
 		return nil, errors.New("at least one feature path is required")
