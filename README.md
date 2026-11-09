@@ -26,7 +26,7 @@ gi demo
 
 `gi demo` checks a greeting, then runs that same check under load. [Install](https://gi-runner.github.io/gi/install/) also covers the shell script, Go, and editors.
 
-**27k requests a second, in 65 MB.** On the same local echo, k6 does 29.5k in 150 MB.
+**65 MB. k6 used 150 MB** for the same local echo.
 
 | | **gi** | godog | k6 |
 | --- | --- | --- | --- |
