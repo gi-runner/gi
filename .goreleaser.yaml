@@ -22,7 +22,7 @@ archives:
 checksum:
   name_template: checksums.txt
 
-homebrews:
+brews:
   - name: gi
     repository:
       owner: gi-runner
@@ -40,4 +40,4 @@ homebrews:
       system "#{bin}/gi", "version"
 
 changelog:
-  use: github
+  use: git
