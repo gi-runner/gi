@@ -1,0 +1,33 @@
+{
+  "title": "gi load",
+  "uid": "gi-load",
+  "schemaVersion": 39,
+  "timezone": "browser",
+  "refresh": "5s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Virtual users",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "targets": [{ "expr": "gi_vus", "legendFormat": "{{feature}}" }]
+    },
+    {
+      "type": "stat",
+      "title": "Requests per second",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "targets": [{ "expr": "gi_http_req_rate", "legendFormat": "{{feature}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP requests",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [{ "expr": "gi_http_reqs", "legendFormat": "{{feature}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Failed iterations",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "targets": [{ "expr": "gi_http_req_failed", "legendFormat": "{{feature}}" }]
+    }
+  ]
+}

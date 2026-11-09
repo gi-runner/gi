@@ -35,12 +35,20 @@ func newCommand(code *int) *cobra.Command {
 	root.SetErr(os.Stderr)
 	root.SetVersionTemplate("gi {{.Version}}\n")
 	root.Flags().BoolP("version", "v", false, "Print version")
-	root.AddCommand(newTestCommand(code), newLoadCommand(code), newMockCommand(code))
+	root.AddCommand(newTestCommand(code), newLoadCommand(code), newMockCommand(code), newCheckCommand(code), newDemoCommand(code), newInitCommand(code))
 	root.AddCommand(&cobra.Command{
 		Use: "version", Short: "Print version", Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, _ []string) { cmd.Println("gi", version) },
 	})
 	return root
+}
+
+func newCheckCommand(code *int) *cobra.Command {
+	return &cobra.Command{
+		Use: "check [files or directories]", Short: "Report steps, configure keys, and tags gi cannot run, without running them",
+		Example: "  gi check src/test/java",
+		Run:     func(_ *cobra.Command, args []string) { *code = runCheck(args) },
+	}
 }
 
 type commonOptions struct {
@@ -81,16 +89,22 @@ func newTestCommand(code *int) *cobra.Command {
 type loadCommandOptions struct {
 	commonOptions
 	loadOptions
-	thresholds []string
+	thresholds                                      []string
+	part, snapshot, startAt, metrics, metricsListen string
+	profile                                         string
 }
 
 func newLoadCommand(code *int) *cobra.Command {
 	opt := loadCommandOptions{}
 	cmd := &cobra.Command{
 		Use: "load [files or directories]", Short: "Run load tests",
-		Example: "  gi load users.feature --vus 10 --duration 30s\n  gi load users.feature --rate 100 --threshold 'p95 < 200ms'",
-		Run:     func(_ *cobra.Command, args []string) { *code = runLoad(args, opt) },
+		Example: "  gi load users.feature --vus 10 --duration 30s\n  gi load users.feature --rate 100 --threshold 'p95 < 200ms abort'\n" +
+			"  gi load users.feature --profile spike\n" +
+			"  gi load users.feature --vus 400 --part 2/4 --snapshot part2.json\n  gi load merge part*.json --report load.html\n" +
+			"  gi load plan users.feature --parts 4",
+		Run: func(_ *cobra.Command, args []string) { *code = runLoad(args, opt) },
 	}
+	cmd.AddCommand(newMergeCommand(code), newPlanCommand(code))
 	fs := cmd.Flags()
 	opt.fs = fs
 	opt.flags(fs)
@@ -105,6 +119,54 @@ func newLoadCommand(code *int) *cobra.Command {
 	fs.DurationVar(&opt.warmup, "warmup", 0, "Unmeasured time before the window")
 	fs.IntVar(&opt.rps, "rps", 0, "HTTP requests per second cap; 0 means no cap")
 	fs.StringArrayVar(&opt.thresholds, "threshold", nil, "Pass condition, e.g. p95 < 200ms (repeatable)")
+	fs.StringVar(&opt.part, "part", "", "Run share i of n of the profile, e.g. 2/4")
+	fs.StringVar(&opt.snapshot, "snapshot", "", "Write histograms for gi load merge")
+	fs.StringVar(&opt.startAt, "start-at", "", "Wait until this RFC 3339 time before starting")
+	fs.StringVar(&opt.metrics, "metrics", "", "Stream one JSON line of load metrics per second to this file")
+	fs.StringVar(&opt.metricsListen, "metrics-listen", "", "Serve Prometheus text at /metrics on this address, e.g. :9090")
+	fs.StringVar(&opt.profile, "profile", "", "Run one named gi-load profile, such as spike")
+	return cmd
+}
+
+func newPlanCommand(code *int) *cobra.Command {
+	var parts int
+	var start string
+	cmd := &cobra.Command{
+		Use: "plan [files or directories]", Short: "Print the commands that split a load run across machines",
+		Example: "  gi load plan users.feature --parts 4",
+		Run:     func(_ *cobra.Command, args []string) { *code = runPlan(args, parts, start) },
+	}
+	cmd.Flags().IntVar(&parts, "parts", 2, "Machines that share the profile")
+	cmd.Flags().StringVar(&start, "start-at", "", "RFC 3339 start time (default: one minute from now)")
+	return cmd
+}
+
+func newDemoCommand(code *int) *cobra.Command {
+	return &cobra.Command{
+		Use: "demo", Short: "Run a greeting as a functional test and a two-second load test", Args: cobra.NoArgs,
+		Run: func(_ *cobra.Command, _ []string) { *code = runDemo() },
+	}
+}
+
+func newInitCommand(code *int) *cobra.Command {
+	return &cobra.Command{
+		Use: "init", Short: "Write hello.feature and hello.mock.feature in the current directory", Args: cobra.NoArgs,
+		Run: func(_ *cobra.Command, _ []string) { *code = runInit() },
+	}
+}
+
+func newMergeCommand(code *int) *cobra.Command {
+	opt := loadCommandOptions{}
+	cmd := &cobra.Command{
+		Use: "merge <snapshots>", Short: "Merge load snapshots from every part and judge thresholds",
+		Args: cobra.MinimumNArgs(1),
+		Run:  func(_ *cobra.Command, args []string) { *code = runMerge(args, opt) },
+	}
+	fs := cmd.Flags()
+	fs.StringVar(&opt.reportPath, "report", "", "Write a self-contained HTML report")
+	fs.StringVar(&opt.junitPath, "junit", "", "Write a JUnit XML report")
+	fs.StringVar(&opt.jsonPath, "json", "", "Write a JSON report")
+	fs.StringArrayVar(&opt.thresholds, "threshold", nil, "Extra pass condition (repeatable)")
 	return cmd
 }
 

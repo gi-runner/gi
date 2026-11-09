@@ -51,7 +51,7 @@ Run `gi test features/`. Keep mock files outside that test directory. Tag called
 | One file, `--jobs 4` | Four scenarios of that file. |
 | `--jobs 1` | One feature at a time, scenarios in order. |
 
-Use `--jobs 1` when scenarios depend on each other's data. A single file runs scenarios concurrently when `--jobs` is greater than 1.
+Use `--jobs 1` when scenarios depend on each other's data, or `@lock` to serialize only the scenarios that share data. A single file runs scenarios concurrently when `--jobs` is greater than 1. `configure abortSuiteOnFailure = true` in config skips every scenario that has not started once one fails.
 
 ## Signal and listen
 
@@ -98,6 +98,8 @@ function fn() {
 | `def result = call read('login.feature')` | Own JavaScript variables and built-ins. | Read returned variables from `result`. |
 | `gi.call(path, arg)` | Own scope; `gi.call(true, path, arg)` shares the caller. | Returns the called feature's variables. |
 
+An assigned result also holds the callee's last `response`, `responseStatus`, `responseHeaders`, `responseCookies`, `responseTime` and `responseBytes`.
+
 Use an assigned call when you only need its result. It keeps changes to variables, built-ins and cookies out of the caller. A bare call deliberately shares variables, persistent HTTP settings and cookie changes. Neither form preserves a partly built request's path or body.
 
 ### Arguments and selection
@@ -139,6 +141,10 @@ The [HTML report](reports.md) nests called steps under the `call` step.
 | `@env=name` | The scenario runs only when `--env` equals `name`. Several `@env` tags mean any of them. |
 | `@envnot=name` | The scenario is skipped when `--env` equals `name`. |
 | `@setup` | The scenario is not part of the run. `gi.setup()` runs it. `@setup=name` or a comma-separated list names it. |
+| `@lock=name` / `@lock=*` | Serializes scenarios sharing the name, or runs the scenario alone. |
+| `@weight=n` | The scenario's share of a load mix. See [Load testing](load.md). |
+| `@load=name` | Runs this scenario only in the named `gi-load` profile. A scenario with no `@load` runs in every profile. |
+| `@parallel=false` | Ignored, as in Karate v2. Use `@lock` instead; `gi check` points these out. |
 
 `--tag` is an expression, applied after the tags above. Names are case-sensitive. The leading `@` is optional.
 

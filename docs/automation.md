@@ -20,18 +20,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version: '1.27.2'
-          cache: false
-      - run: go install github.com/gi-runner/gi/cmd/gi@latest
-      - name: Run smoke tests
+      - uses: gi-runner/gi@v1
         env:
           BASE_URL: ${{ vars.API_BASE_URL }}
-        run: >-
-          gi test features/ --tag @smoke
-          --var "baseUrl=$BASE_URL"
-          --report report.html --junit junit.xml
+        with:
+          args: test features/ --tag @smoke --var "baseUrl=$BASE_URL" --report report.html --junit junit.xml
       - uses: actions/upload-artifact@v6
         if: always()
         with:
@@ -43,7 +36,7 @@ jobs:
 
 A successful job uploads `gi-reports` containing the HTML and JUnit files. A failed scenario marks the test step as failed; the artifact upload still runs when reports were produced.
 
-Pin the gi version you have validated. For development, `@latest` installs the latest tagged release; to test gi from its own checkout, use `go build -o bin/gi ./cmd/gi`.
+Pin the Action to a release tag, such as `gi-runner/gi@v1.0.0`, after you have validated it. From a checkout of gi, `go build -o bin/gi ./cmd/gi` builds the CLI without installing.
 
 ## Environment configuration
 

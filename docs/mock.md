@@ -50,7 +50,21 @@ The default listen address is `:18080`.
 
 `Background` executes once when the mock starts. User variables remain in one runtime across requests. Requests run one at a time, so state mutations are safe, and a cancelled request returns without waiting for the one in progress. Request and response metadata are reset for each request. Routes can also use expressions in their scenario names, such as `Scenario: pathMatches('/users/{id}') && methodIs('get')`.
 
-Available request variables include `requestPath`, `requestMethod`, `requestUri`, `requestBytes`, `requestHeaders`, `requestParams`, and `requestCookies`. `paramValue(name)` reads the first query value and `paramExists(name)` checks for it. Set `responseHeaders` and `responseDelay` when needed. A matcher exception returns HTTP 500. Request bodies over 1 MiB return HTTP 413.
+Available request variables include `requestPath`, `requestMethod`, `requestUri`, `requestBytes`, `requestHeaders`, `requestParams`, and `requestCookies`. `paramValue(name)` reads the first query value and `paramExists(name)` checks for it. Set `responseHeaders` and `responseDelay` when needed. `configure cors = true` answers `OPTIONS` with `Access-Control-Allow-Origin: *` so a browser can call the mock. A matcher exception returns HTTP 500. Request bodies over 1 MiB return HTTP 413.
+
+## Start a mock from a scenario
+
+`karate.start('users.mock.feature')` starts the mock on a free port and returns `{ url, port, ssl, stop() }`. The mock stops when the scenario ends, or when you call `stop()`. Options: `{ mock, port, ssl, cert, key, arg, pathPrefix }`.
+
+```gherkin
+* def server = karate.start('users.mock.feature')
+* url server.url
+* path 'users', 1
+* method get
+* status 200
+```
+
+From Go, `gi.Mock(ctx, path, gi.MockOptions{})` does the same and returns `{ URL, Port, Close }`.
 
 ## Common mistakes
 

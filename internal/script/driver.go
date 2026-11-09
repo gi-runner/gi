@@ -2,6 +2,7 @@ package script
 
 import (
 	"errors"
+	"slices"
 
 	"github.com/grafana/sobek"
 )
@@ -48,12 +49,55 @@ func (v *VM) driverFunction(name string, prefix []any) func(sobek.FunctionCall) 
 	}
 }
 
-// Global helpers stay available before a browser is opened. The driver object
-// and its navigation methods are created only when JavaScript first reads it.
+// Browser globals are bound the first time a bound runtime compiles source that names them.
+func (v *VM) wantDriver(src string) {
+	if v.driverBound || v.karate == nil || !mentionsDriver(src) {
+		return
+	}
+	v.driverBound = true
+	v.bindDriver()
+}
+
+func mentionsDriver(src string) bool {
+	for i := 0; i < len(src); {
+		if !identStart(src[i]) {
+			i++
+			continue
+		}
+		start := i
+		for i < len(src) && identPart(src[i]) {
+			i++
+		}
+		name := src[start:i]
+		if name == "driver" {
+			return true
+		}
+		j := i
+		for j < len(src) && (src[j] == ' ' || src[j] == '\t') {
+			j++
+		}
+		if j < len(src) && src[j] == '(' && driverGlobal(name) && slices.Contains(driverMethods, name) {
+			return true
+		}
+	}
+	return false
+}
+
+func identStart(c byte) bool {
+	return c == '_' || c == '$' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+}
+
+func identPart(c byte) bool { return identStart(c) || c >= '0' && c <= '9' }
+
+// A global the scenario already defined keeps its value.
 func (v *VM) bindDriver() {
 	functions := make(map[string]sobek.Value)
+	defined := func(name string) bool {
+		rv := v.rt.GlobalObject().Get(name)
+		return rv != nil && !sobek.IsUndefined(rv)
+	}
 	for _, name := range driverMethods {
-		if driverGlobal(name) {
+		if driverGlobal(name) && !defined(name) {
 			fn := v.rt.ToValue(v.driverFunction(name, nil))
 			functions[name] = fn
 			_ = v.rt.Set(name, fn)
@@ -73,6 +117,9 @@ func (v *VM) bindDriver() {
 		set(call.Argument(0))
 		return sobek.Undefined()
 	})
+	if defined("driver") {
+		return
+	}
 	if err := v.rt.GlobalObject().DefineAccessorProperty("driver", getter, setter, sobek.FLAG_TRUE, sobek.FLAG_TRUE); err != nil {
 		panic(v.rt.NewGoError(err))
 	}

@@ -171,6 +171,19 @@ func AsInt(v any) (int, bool) {
 	}
 }
 
+func AsFloat(v any) (float64, bool) {
+	switch n := v.(type) {
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case float64:
+		return n, !math.IsNaN(n) && !math.IsInf(n, 0)
+	default:
+		return 0, false
+	}
+}
+
 func AsMap(v any) (map[string]any, bool) {
 	if model, ok := v.(interface{ DataValue() any }); ok {
 		return AsMap(model.DataValue())

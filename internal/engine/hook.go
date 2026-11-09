@@ -25,7 +25,7 @@ func (e *exec) hook(name string) (StepResult, bool) {
 
 // A file-level hook runs only after its scenario runtime is no longer executing.
 func fileHook(ctx context.Context, e *exec, name string, res *ScenarioResult) {
-	if e.opt.SkipHooks {
+	if e.opt.SkipHooks || !e.vm.HasHook(name) {
 		return
 	}
 	e.ctx = ctx

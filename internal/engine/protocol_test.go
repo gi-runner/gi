@@ -42,7 +42,7 @@ Scenario: read
 * match got == 'Ada'
 `), engine.Options{
 		Vars: map[string]any{"pageUrl": "http://page.test"},
-		NewPage: func(context.Context) (engine.Page, error) {
+		NewPage: func(context.Context, engine.DriverConfig) (engine.Page, error) {
 			return page, nil
 		},
 	})

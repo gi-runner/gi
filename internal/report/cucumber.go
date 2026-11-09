@@ -31,7 +31,7 @@ func cucumberOf(doc Document) []map[string]any {
 					keyword += " "
 				}
 				status := stepStatus(st)
-				if sc.Skipped || sc.Miss {
+				if sc.Skipped || sc.Miss || st.Skipped {
 					status = "skipped"
 				} else if sc.Passed {
 					status = "passed"

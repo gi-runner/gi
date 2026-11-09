@@ -1,16 +1,23 @@
 # Your first test
 
-Start a local mock API, test its response, then run the same test under load. You need Go 1.27.2 or newer and two terminals; no API deployment or Chrome is needed.
+One feature file is a functional test and a load test. Prove that before writing a file:
 
-Create an empty directory for the two files below. Keep both terminals in that directory.
+```bash
+gi demo
+```
 
-## Install
+`gi demo` starts a greeting mock, checks the response, then runs that same check for two seconds with four users. It exits 0 and prints `demo passed`.
+
+Install gi with the [install script](install.md) or, when Go 1.27.2 or newer is already on the machine:
 
 ```bash
 go install github.com/gi-runner/gi/cmd/gi@latest
+gi demo
 ```
 
-See [Install](install.md) to build from source.
+## Write the same test yourself
+
+`gi init` writes `hello.feature` and `hello.mock.feature` in the current directory. The steps below are those files. You need two terminals and no Chrome.
 
 ## Start a mock API
 

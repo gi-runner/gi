@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"os"
@@ -25,7 +26,8 @@ import (
 	"github.com/gi-runner/gi/internal/suite"
 )
 
-const version = "0.3.0"
+// version is set by release builds with -ldflags "-X github.com/gi-runner/gi/internal/cli.version=...".
+var version = "1.0.0"
 
 func runTest(args []string, opt testOptions) int {
 	files, err := discover(args)
@@ -50,7 +52,7 @@ func runTest(args []string, opt testOptions) int {
 	defer sender.CloseIdleConnections()
 	options := engine.Options{
 		Vars: varmap, HTTP: sender, Tag: opt.tag, Timeout: opt.timeout, Stdout: os.Stdout,
-		Env: opt.env, Suite: su, Dial: adapters.Dial, NewPage: adapters.NewPage,
+		Env: opt.env, Suite: su, Dial: adapters.Dial, NewPage: adapters.NewPage, StartMock: mock.Start,
 	}
 	features, err := runFiles(ctx, files, options, n)
 	if err != nil {
@@ -84,6 +86,64 @@ func runTest(args []string, opt testOptions) int {
 	return 0
 }
 
+func runCheck(args []string) int {
+	files, err := discover(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	found := 0
+	for _, path := range files {
+		f, err := feature.ParseFile(path)
+		if err != nil {
+			fmt.Println(err)
+			found++
+			continue
+		}
+		for _, fd := range engine.Check(f, nil) {
+			fmt.Printf("%s:%d: %s\n    %s\n", fd.Path, fd.Line, fd.Problem, fd.Text)
+			found++
+		}
+	}
+	if found > 0 {
+		fmt.Printf("%d findings, %d files checked\n", found, len(files))
+		return 1
+	}
+	fmt.Printf("%d files checked, no findings\n", len(files))
+	return 0
+}
+
+// loadConfig layers the feature's profile and the flags onto base and validates the result.
+func loadConfig(f *feature.File, opt loadCommandOptions, base load.Config) (load.Config, error) {
+	cfg := base
+	cfg.LoadSpec = f.Load.Clone()
+	cfg.Dial, cfg.NewPage, cfg.StartMock = adapters.Dial, adapters.NewPage, mock.Start
+	if err := applyLoadFlags(&cfg, opt.loadOptions); err != nil {
+		return cfg, err
+	}
+	cfg, err := load.Normalize(cfg)
+	if err != nil {
+		return cfg, err
+	}
+	cfg.Thresholds = append(cfg.Thresholds, opt.thresholds...)
+	_, err = load.Share(cfg, cfg.Part.Index, cfg.Part.Of)
+	return cfg, err
+}
+
+func printProfile(name string, cfg load.Config) {
+	fmt.Printf("load %s  %s  duration=%s", name, load.Describe(cfg), cfg.Duration)
+	if cfg.Part.Of > 1 {
+		fmt.Printf("  part=%d/%d", cfg.Part.Index+1, cfg.Part.Of)
+	}
+	if cfg.Warmup > 0 {
+		fmt.Printf("  warmup=%s", cfg.Warmup)
+	}
+	if cfg.RPS > 0 {
+		fmt.Printf("  rps=%d", cfg.RPS)
+	}
+	fmt.Println()
+}
+
 func runLoad(args []string, opt loadCommandOptions) int {
 	files, err := discover(args)
 	if err != nil {
@@ -95,60 +155,117 @@ func runLoad(args []string, opt loadCommandOptions) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
+	part := load.Part{Of: 1}
+	if opt.part != "" {
+		if part, err = parsePart(opt.part); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
+	}
+	if opt.snapshot != "" && len(files) > 1 {
+		fmt.Fprintln(os.Stderr, "--snapshot takes one feature file")
+		return 2
+	}
 	su := suite.Open(firstPath(files), opt.env)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+	var metrics io.Writer
+	if opt.metrics != "" {
+		out, err := os.Create(opt.metrics)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
+		defer func() { _ = out.Close() }()
+		metrics = out
+	}
+	prom := &scrape{}
+	stopMetrics, bound, err := listenMetrics(ctx, opt.metricsListen, prom)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	defer stopMetrics()
+	if bound != "" {
+		_, _ = fmt.Fprintf(os.Stderr, "metrics http://%s/metrics\n", bound)
+	}
 	started := time.Now()
 	passed := true
 	var features []engine.FileResult
 	var loads []load.Result
+files:
 	for _, path := range files {
 		f, err := feature.ParseFile(path)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
-		cfg := load.Config{
-			VUs: f.Load.VUs, VUsTo: f.Load.VUsTo, UsersToSet: f.Load.UsersToSet,
-			Rate: f.Load.Rate, RateSet: f.Load.RateSet, RateTo: f.Load.RateTo, RateToSet: f.Load.RateToSet,
-			StageText: append([]string{}, f.Load.StageText...), MaxInFlight: f.Load.MaxInFlight, MaxEndpoints: f.Load.MaxEndpoints,
-			Duration: f.Load.Duration, Warmup: f.Load.Warmup, RPS: f.Load.RPS,
-			Thresholds: append([]string{}, f.Load.Thresholds...),
-			Vars:       varmap, Tag: opt.tag, Timeout: opt.timeout, Env: opt.env, Suite: su,
-			Dial: adapters.Dial, NewPage: adapters.NewPage,
-		}
-		if err := applyLoadFlags(&cfg, opt.loadOptions); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 2
-		}
-		cfg, err = load.Normalize(cfg)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 2
-		}
-		cfg.Thresholds = append(cfg.Thresholds, opt.thresholds...)
-		fmt.Printf("load %s  %s  duration=%s", f.Name, load.Describe(cfg), cfg.Duration)
-		if cfg.Warmup > 0 {
-			fmt.Printf("  warmup=%s", cfg.Warmup)
-		}
-		if cfg.RPS > 0 {
-			fmt.Printf("  rps=%d", cfg.RPS)
-		}
-		fmt.Println()
-		res, err := load.Run(ctx, f, cfg)
-		loads = append(loads, res)
-		features = append(features, engine.FileResult{Path: f.Path, Name: f.Name})
-		printLoad(res)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			passed = false
-			if ctx.Err() != nil {
-				break
+		plans := f.Plans()
+		if opt.profile != "" {
+			plans = nil
+			for _, plan := range f.Plans() {
+				if plan.Name == opt.profile {
+					plans = append(plans, plan)
+				}
 			}
-			continue
+			if len(plans) == 0 {
+				fmt.Fprintf(os.Stderr, "no gi-load profile %q\n", opt.profile)
+				return 2
+			}
 		}
-		if !res.Passed {
-			passed = false
+		if err := waitStart(ctx, opt.startAt); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
+		for _, plan := range plans {
+			file := f
+			if plan.Name != "" || len(f.Profiles) > 0 {
+				file = f.ForProfile(plan.Name)
+			}
+			label := f.Name
+			if plan.Name != "" {
+				label = f.Name + " / " + plan.Name
+			}
+			snap := opt.snapshot
+			if plan.Name != "" && snap != "" {
+				ext := filepath.Ext(snap)
+				snap = strings.TrimSuffix(snap, ext) + "-" + plan.Name + ext
+			}
+			progress := liveProgress(os.Stderr, label)
+			if metrics != nil {
+				progress = fanout(progress, metricStream(metrics, label))
+			}
+			if opt.metricsListen != "" {
+				prom.mu.Lock()
+				prom.name = label
+				prom.mu.Unlock()
+				progress = fanout(progress, prom.note)
+			}
+			cfg, err := loadConfig(file, opt, load.Config{
+				Vars: varmap, Tag: opt.tag, Timeout: opt.timeout, Env: opt.env, Suite: su, Part: part,
+				Snapshot: snap, Progress: progress,
+			})
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				return 2
+			}
+			printProfile(label, cfg)
+			res, err := load.Run(ctx, file, cfg)
+			clearProgress(os.Stderr, progress)
+			loads = append(loads, res)
+			features = append(features, engine.FileResult{Path: f.Path, Name: label})
+			printLoad(res)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				passed = false
+				if ctx.Err() != nil {
+					break files
+				}
+				continue
+			}
+			if !res.Passed {
+				passed = false
+			}
 		}
 	}
 	var last *load.Result
@@ -214,6 +331,11 @@ func emit(ctx context.Context, doc report.Document, htmlPath, junitPath, jsonPat
 		if err := report.ExportOTLP(ctx, otel, doc); err != nil {
 			fmt.Fprintln(os.Stderr, "otel:", err)
 		}
+		if len(doc.Loads) > 0 {
+			if err := report.ExportLoadMetrics(ctx, otel, doc.Loads); err != nil {
+				fmt.Fprintln(os.Stderr, "otel metrics:", err)
+			}
+		}
 	}
 	return nil
 }
@@ -241,6 +363,9 @@ func printFunctional(res engine.FileResult) {
 			fmt.Printf("  ✓ %s (%s)\n", sc.Name, sc.Duration.Round(time.Millisecond))
 		default:
 			fmt.Printf("  ✗ %s (%s)\n", sc.Name, sc.Duration.Round(time.Millisecond))
+			if line, text, ok := failedStep(sc.Steps); ok {
+				fmt.Printf("    %s:%d: %s\n", res.Path, line, text)
+			}
 			if sc.Error != "" {
 				fmt.Printf("%s\n", indent(sc.Error))
 			}
@@ -266,7 +391,7 @@ func printLoad(res load.Result) {
 		fmt.Printf("  endpoints:  %d requests aggregated into %s (limit %d)\n", res.EndpointOverflow, "[other endpoints]", res.EndpointLimit)
 	}
 	for _, ep := range res.Endpoints {
-		fmt.Printf("  %-22s  n=%-6d p95=%s\n", ep.Name, ep.Count, ep.Stats.P95.Round(time.Microsecond))
+		fmt.Printf("  %s  n=%d  p95=%s\n", ep.Name, ep.Count, ep.Stats.P95.Round(time.Microsecond))
 	}
 	for _, th := range res.Thresholds {
 		mark := "pass"
@@ -278,6 +403,22 @@ func printLoad(res load.Result) {
 	for _, sc := range res.Failures {
 		fmt.Printf("  ✗ %s\n%s\n", sc.Name, indent(sc.Error))
 	}
+}
+
+func failedStep(steps []engine.StepResult) (int, string, bool) {
+	for _, st := range steps {
+		if st.Passed || st.Skipped {
+			if line, text, ok := failedStep(st.Calls); ok {
+				return line, text, true
+			}
+			continue
+		}
+		if line, text, ok := failedStep(st.Calls); ok {
+			return line, text, true
+		}
+		return st.Line, st.Text, true
+	}
+	return 0, "", false
 }
 
 func indent(s string) string {
@@ -328,7 +469,7 @@ func discover(args []string) ([]string, error) {
 				}
 				return nil
 			}
-			if strings.HasSuffix(path, ".feature") {
+			if strings.HasSuffix(path, ".feature") && !strings.HasSuffix(path, ".mock.feature") {
 				out = append(out, path)
 			}
 			return nil
@@ -378,17 +519,11 @@ func applyLoadFlags(cfg *load.Config, opt loadOptions) error {
 	}
 	switch {
 	case len(opt.stages) > 0:
-		cfg.VUs, cfg.VUsTo, cfg.UsersToSet = 0, 0, false
-		cfg.Rate, cfg.RateTo, cfg.RateSet, cfg.RateToSet = 0, 0, false, false
-		cfg.Duration = 0
 		cfg.Stages = nil
-		cfg.StageText = append([]string{}, opt.stages...)
+		cfg.LoadSpec = cfg.WithStages(opt.stages)
 	case rateSet || rateToSet:
-		cfg.StageText = nil
-		cfg.Stages = nil
-		cfg.VUs = 0
-		cfg.VUsTo = 0
-		cfg.UsersToSet = false
+		cfg.StageText, cfg.Stages = nil, nil
+		cfg.VUs, cfg.VUsTo, cfg.UsersToSet = 0, 0, false
 		if rateSet {
 			cfg.Rate = opt.rate
 			cfg.RateSet = true
@@ -398,12 +533,8 @@ func applyLoadFlags(cfg *load.Config, opt loadOptions) error {
 			cfg.RateToSet = true
 		}
 	case vusSet || vusToSet:
-		cfg.StageText = nil
-		cfg.Stages = nil
-		cfg.Rate = 0
-		cfg.RateSet = false
-		cfg.RateTo = 0
-		cfg.RateToSet = false
+		cfg.StageText, cfg.Stages = nil, nil
+		cfg.Rate, cfg.RateTo, cfg.RateSet, cfg.RateToSet = 0, 0, false, false
 		if vusSet {
 			cfg.VUs = opt.vus
 		}
@@ -423,13 +554,6 @@ func applyLoadFlags(cfg *load.Config, opt loadOptions) error {
 	}
 	if opt.fs.Changed("rps") {
 		cfg.RPS = opt.rps
-	}
-	staged := len(cfg.StageText) > 0 || len(cfg.Stages) > 0
-	if !staged && !(cfg.RateSet || cfg.RateToSet || cfg.Rate > 0) && !cfg.UsersToSet && cfg.VUs < 1 {
-		cfg.VUs = 10
-	}
-	if !staged && cfg.Duration <= 0 {
-		cfg.Duration = 10 * time.Second
 	}
 	return nil
 }

@@ -2,8 +2,6 @@ package browser
 
 import (
 	"context"
-	"github.com/gi-runner/gi/internal/engine"
-	"github.com/gi-runner/gi/internal/feature"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +10,9 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/gi-runner/gi/internal/engine"
+	"github.com/gi-runner/gi/internal/feature"
 )
 
 func TestChromePage(t *testing.T) {
@@ -25,7 +26,7 @@ func TestChromePage(t *testing.T) {
 	defer srv.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	page, err := Open(ctx)
+	page, err := Open(ctx, engine.DriverConfig{Headless: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +200,7 @@ func TestWindowOperationStopsAtTheStepDeadline(t *testing.T) {
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
-	opened, err := Open(ctx)
+	opened, err := Open(ctx, engine.DriverConfig{Headless: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +301,7 @@ func TestDialogDuringInitialNavigation(t *testing.T) {
 	defer srv.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
-	p, err := Open(ctx)
+	p, err := Open(ctx, engine.DriverConfig{Headless: true})
 	if err != nil {
 		t.Fatal(err)
 	}

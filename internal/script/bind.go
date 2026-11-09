@@ -49,6 +49,19 @@ type Bindings struct {
 	Listen     func(time.Duration, <-chan struct{}) (any, error)
 	Embed      func(any, string, string) error
 	Helpers    map[string]func([]any) (any, error)
+	Props      map[string]func() any
+	MatchExpr  func(string) (bool, string, error)
+	Start      func(any) (Server, error)
+	Track      func(stop func() error)
+	NoProcess  bool
+}
+
+// Server is a mock started from a scenario.
+type Server struct {
+	URL  string
+	Port int
+	SSL  bool
+	Stop func() error
 }
 
 func (v *VM) Bind(b Bindings) error {
@@ -88,7 +101,6 @@ func (v *VM) Bind(b Bindings) error {
 			return err
 		}
 	}
-	v.bindDriver()
 	_ = v.rt.Set("read", v.readCall)
 	return nil
 }
@@ -198,6 +210,8 @@ func (v *VM) initializeAPI() (err error) {
 			return v.ToValue(got)
 		})
 	}
+	v.bindAPI(obj)
+	v.bindProcess(obj)
 	if err := v.bindHelpers(obj); err != nil {
 		return err
 	}
@@ -317,8 +331,15 @@ func headerObject(v any) (map[string]any, error) {
 }
 
 func (v *VM) Bridge(methods map[string]func([]any) (any, error)) sobek.Value {
+	return v.Object(map[string]any{"__gi": true}, methods)
+}
+
+// Object builds a JavaScript object from plain fields and Go-backed methods.
+func (v *VM) Object(fields map[string]any, methods map[string]func([]any) (any, error)) sobek.Value {
 	obj := v.rt.NewObject()
-	_ = obj.Set("__gi", true)
+	for k, x := range fields {
+		_ = obj.Set(k, v.ToValue(x))
+	}
 	for name, fn := range methods {
 		_ = obj.Set(name, func(call sobek.FunctionCall) sobek.Value {
 			args := exportArgs(call.Arguments, nil)
@@ -381,6 +402,8 @@ func (v *VM) storeHook(name string, val sobek.Value) error {
 	return nil
 }
 
+func (v *VM) HasHook(name string) bool { return v.hooks[name] != nil }
+
 func (v *VM) CallHook(name string) (bool, error) {
 	fn := v.hooks[name]
 	if fn == nil {
@@ -414,19 +437,24 @@ func (v *VM) ConfigureRetry(val any) error {
 	return nil
 }
 
+// RetryPolicy returns the configured retry count, three by default, and interval.
+func (v *VM) RetryPolicy() (count int, every time.Duration) {
+	if v.retryN < 1 {
+		return 3, v.retryEvery
+	}
+	return v.retryN, v.retryEvery
+}
+
 func (v *VM) SetRetryUntil(expr string) { v.retryUntil = expr }
 
 func (v *VM) TakeRetryUntil() (expr string, count int, every time.Duration) {
 	expr = v.retryUntil
 	v.retryUntil = ""
-	count = v.retryN
-	if expr != "" && count < 1 {
-		count = 3
-	}
 	if expr == "" {
-		count = 1
+		return "", 1, v.retryEvery
 	}
-	return expr, count, v.retryEvery
+	count, every = v.RetryPolicy()
+	return expr, count, every
 }
 
 func (v *VM) Bytes(ref string) ([]byte, error) {

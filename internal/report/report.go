@@ -177,6 +177,7 @@ type stepView struct {
 	Keyword    string      `json:"keyword"`
 	Text       string      `json:"text"`
 	Passed     bool        `json:"passed"`
+	Skipped    bool        `json:"skipped,omitempty"`
 	DurationMS float64     `json:"durationMs"`
 	Error      string      `json:"error,omitempty"`
 	Diff       string      `json:"diff,omitempty"`
@@ -209,33 +210,43 @@ type httpView struct {
 }
 
 type loadView struct {
-	Profile          string   `json:"profile,omitempty"`
-	Open             bool     `json:"open,omitempty"`
-	VUs              int      `json:"vus"`
-	Iterations       int64    `json:"iterations"`
-	FailedIterations int64    `json:"failedIterations"`
-	Requests         int64    `json:"requests"`
-	TransportErrors  int64    `json:"transportErrors"`
-	EndpointLimit    int      `json:"endpointLimit"`
-	EndpointOverflow int64    `json:"endpointOverflow,omitempty"`
-	ElapsedMS        float64  `json:"elapsedMs"`
-	RPS              float64  `json:"rps"`
-	Passed           bool     `json:"passed"`
-	P50              string   `json:"p50"`
-	P95              string   `json:"p95"`
-	P99              string   `json:"p99"`
-	Mean             string   `json:"mean"`
-	Min              string   `json:"min"`
-	Max              string   `json:"max"`
-	SchedP95         string   `json:"schedP95,omitempty"`
-	MissedStarts     int64    `json:"missedStarts,omitempty"`
-	LateStarts       int64    `json:"lateStarts,omitempty"`
-	CPUMS            float64  `json:"cpuMs,omitempty"`
-	RSS              uint64   `json:"rss,omitempty"`
-	Goroutines       int      `json:"goroutines,omitempty"`
-	Endpoints        []epView `json:"endpoints"`
-	Thresholds       []thView `json:"thresholds"`
-	Failures         []scView `json:"failures,omitempty"`
+	Profile          string     `json:"profile,omitempty"`
+	Open             bool       `json:"open,omitempty"`
+	VUs              int        `json:"vus"`
+	Iterations       int64      `json:"iterations"`
+	FailedIterations int64      `json:"failedIterations"`
+	Requests         int64      `json:"requests"`
+	TransportErrors  int64      `json:"transportErrors"`
+	EndpointLimit    int        `json:"endpointLimit"`
+	EndpointOverflow int64      `json:"endpointOverflow,omitempty"`
+	ElapsedMS        float64    `json:"elapsedMs"`
+	RPS              float64    `json:"rps"`
+	Passed           bool       `json:"passed"`
+	P50              string     `json:"p50"`
+	P95              string     `json:"p95"`
+	P99              string     `json:"p99"`
+	Mean             string     `json:"mean"`
+	Min              string     `json:"min"`
+	Max              string     `json:"max"`
+	SchedP95         string     `json:"schedP95,omitempty"`
+	MissedStarts     int64      `json:"missedStarts,omitempty"`
+	LateStarts       int64      `json:"lateStarts,omitempty"`
+	CPUMS            float64    `json:"cpuMs,omitempty"`
+	RSS              uint64     `json:"rss,omitempty"`
+	Goroutines       int        `json:"goroutines,omitempty"`
+	Timeline         []slotView `json:"timeline,omitempty"`
+	Endpoints        []epView   `json:"endpoints"`
+	Thresholds       []thView   `json:"thresholds"`
+	Failures         []scView   `json:"failures,omitempty"`
+}
+
+type slotView struct {
+	OffsetMS float64 `json:"offsetMs"`
+	Requests int64   `json:"requests"`
+	Errors   int64   `json:"errors"`
+	Mean     string  `json:"mean"`
+	P95      string  `json:"p95"`
+	Users    int     `json:"users"`
 }
 
 type epView struct {
@@ -303,7 +314,7 @@ func stepsView(steps []engine.StepResult) []stepView {
 	out := make([]stepView, 0, len(steps))
 	for _, st := range steps {
 		step := stepView{
-			Line: st.Line, Keyword: st.Keyword, Text: st.Text, Passed: st.Passed,
+			Line: st.Line, Keyword: st.Keyword, Text: st.Text, Passed: st.Passed, Skipped: st.Skipped,
 			DurationMS: ms(st.Duration), Error: st.Error, Diff: st.Diff, Label: st.Label, Output: st.Output,
 			Calls: stepsView(st.Calls), Embeds: embedsView(st.Embeds),
 		}
@@ -453,6 +464,16 @@ func loadViewOf(ld load.Result) loadView {
 		RSS:              ld.RSS,
 		Goroutines:       ld.Goroutines,
 	}
+	for _, slot := range ld.Timeline {
+		lv.Timeline = append(lv.Timeline, slotView{
+			OffsetMS: ms(slot.Offset),
+			Requests: slot.Requests,
+			Errors:   slot.Errors,
+			Mean:     slot.Mean.String(),
+			P95:      slot.P95.String(),
+			Users:    slot.Users,
+		})
+	}
 	for _, ep := range ld.Endpoints {
 		lv.Endpoints = append(lv.Endpoints, epView{
 			Name: ep.Name, Count: ep.Count, Errors: ep.Errors, RPS: ep.RPS,
@@ -554,6 +575,13 @@ const htmlPage = `<!DOCTYPE html>
     {{range .Thresholds}}<tr><td><code>{{.Text}}</code></td><td>{{.Actual}}</td><td class="{{if .Passed}}ok{{else}}bad{{end}}">{{if .Passed}}pass{{else}}fail{{end}}</td></tr>{{end}}
   </table>
   {{end}}
+  {{if .Timeline}}
+  <h2>Across the run</h2>
+  <table>
+    <tr><th>offset</th><th>users</th><th>requests</th><th>errors</th><th>mean</th><th>p95</th></tr>
+    {{range .Timeline}}<tr><td>{{fmtms .OffsetMS}}</td><td>{{.Users}}</td><td>{{.Requests}}</td><td>{{.Errors}}</td><td>{{.Mean}}</td><td>{{.P95}}</td></tr>{{end}}
+  </table>
+  {{end}}
   {{if .Endpoints}}
   <h2>Endpoints</h2>
   {{if .EndpointOverflow}}<p>{{.EndpointOverflow}} requests aggregated into <code>[other endpoints]</code> after the limit of {{.EndpointLimit}} named endpoints.</p>{{end}}
@@ -599,7 +627,7 @@ const htmlPage = `<!DOCTYPE html>
   <div class="step">
     <code>{{.Keyword}} {{.Text}}</code>
     <span class="dim">{{fmtms .DurationMS}}</span>
-    {{if not .Passed}}<span class="bad">failed</span>{{end}}
+    {{if .Skipped}}<span class="dim">skipped</span>{{else if not .Passed}}<span class="bad">failed</span>{{end}}
     {{if .Output}}<pre>{{.Output}}</pre>{{end}}
     {{range .Embeds}}{{if .Name}}<div class="dim">{{.Name}}</div>{{end}}{{if .Image}}<img alt="{{.Name}}" src="{{.Image}}">{{else}}<pre>{{.Text}}</pre>{{end}}{{end}}
     {{if .Error}}<pre>{{.Error}}</pre>{{end}}

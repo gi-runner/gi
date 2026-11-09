@@ -3,11 +3,16 @@
 ```text
 gi test [files or directories] [flags]
 gi load [files or directories] [flags]
+gi load merge <snapshots> [flags]
 gi mock <file.feature> [flags]
+gi check [files or directories]
+gi demo
+gi init
 gi version
+gi completion {bash|zsh|fish|powershell}
 ```
 
-`gi test` without a path searches `features/`, then `examples/`, then the current directory. It uses the first of those directories that exists. A directory argument includes `.feature` files below it, except hidden directories and `vendor/`. Pass a file to run only that file.
+`gi test` without a path searches `features/`, then `examples/`, then the current directory. It uses the first of those directories that exists. A directory argument includes `.feature` files below it, except hidden directories, `vendor/`, and `*.mock.feature`. Pass a file to run only that file, including a mock file.
 
 Exit status is 0 when the run passed, 1 when a scenario, a threshold, or a file failed, and 2 when the command line is wrong.
 
@@ -47,7 +52,21 @@ Flags may follow the file path. Use `--` before paths beginning with `-`. `gi te
 | `--duration 10s` | Measured window. Stages carry their own durations. |
 | `--warmup 0s` | Unmeasured time before the window. |
 | `--rps n` | Cap on HTTP calls. `0` means no cap. |
-| `--threshold 'p95 < 200ms'` | Repeatable. Also `errorRate`, `rps`, `schedP95`, `missed`, and `late`. See [Load](load.md). |
+| `--threshold 'p95 < 200ms'` | Repeatable. Also `errorRate`, `rps`, `schedP95`, `missed`, and `late`. A call site name follows the value. See [Load](load.md). |
+| `--part 2/4` | Run share 2 of 4 of the profile on this machine. Thresholds are judged by `gi load merge`. |
+| `--snapshot part2.json` | Write the run's histograms for `gi load merge`. Takes one feature file. |
+| `--start-at 2026-11-08T16:00:00Z` | Wait until this RFC 3339 time, so every part starts together. |
+| `--metrics live.jsonl` | Stream one JSON line per second: `time`, `feature`, `elapsed` seconds, `users`, cumulative `requests` and `failed`, and that second's `rps`. |
+| `--metrics-listen :9090` | Serve Prometheus text at `/metrics` for the length of the run. |
+| `--profile spike` | Run one named `gi-load` profile. Omit it to run every profile in the file, one after another. |
+
+`gi load merge part*.json` joins the snapshots of every part, prints the summary, and judges the recorded thresholds plus any `--threshold`. It accepts `--report`, `--json`, and `--junit`, and fails when a part is missing, repeated, or from another profile.
+
+`gi load plan users.feature --parts 4` prints one command per machine and the merge command. `--start-at` defaults to one minute from now. `--parts` must be at least 2.
+
+## demo and init
+
+`gi demo` runs a built-in greeting as a functional test and a two-second load test. `gi init` writes that greeting into the current directory as `hello.feature` and `hello.mock.feature`, and refuses to overwrite either file.
 
 ## mock
 
@@ -55,9 +74,13 @@ Flags may follow the file path. Use `--` before paths beginning with `-`. `gi te
 | --- | --- |
 | `--addr :18080` | Listen address. |
 
+## check
+
+`gi check` reports steps, configure keys, and tags gi cannot run, without running anything. It flags JVM-only calls such as `Java.type`, unknown keywords, and `@parallel=false` (use `@lock` instead). Exit status is 1 when it finds any, 0 when the files are clean, and 2 when the path is wrong.
+
 ## Version
 
-`gi version` prints `gi` and the version.
+`gi version`, `gi --version`, and `gi -v` print `gi` and the version.
 
 ## Common mistakes
 

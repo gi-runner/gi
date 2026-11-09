@@ -3,6 +3,8 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gi-runner/gi/internal/load"
 )
 
 func TestCLIChild(t *testing.T) {
@@ -120,6 +124,102 @@ Scenario: unique path
 	}
 }
 
+func TestLoadPartsMergeIntoOneRun(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	dir := t.TempDir()
+	featurePath := filepath.Join(dir, "users.feature")
+	source := "# gi-load: threshold errorRate < 1%\nFeature: parts\nScenario: get\n* url baseUrl\n* method get\n* status 200\n"
+	if err := os.WriteFile(featurePath, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var snaps []string
+	for i := 1; i <= 2; i++ {
+		snap := filepath.Join(dir, fmt.Sprintf("part%d.json", i))
+		snaps = append(snaps, snap)
+		code, out := runCLI(t, "load", featurePath, "--vus", "2", "--duration", "300ms", "--part", fmt.Sprintf("%d/2", i), "--snapshot", snap, "--var", "baseUrl="+server.URL)
+		if code != 0 || !strings.Contains(out, fmt.Sprintf("part=%d/2", i)) {
+			t.Fatalf("part %d exit %d\n%s", i, code, out)
+		}
+	}
+	report := filepath.Join(dir, "merged.json")
+	code, out := runCLI(t, append([]string{"load", "merge", "--json", report, "--threshold", "p95 < 1s"}, snaps...)...)
+	if code != 0 || !strings.Contains(out, "constant users 2 across 2 parts") || !strings.Contains(out, "threshold errorRate < 1%") || !strings.Contains(out, "threshold p95 < 1s") {
+		t.Fatalf("merge exit %d\n%s", code, out)
+	}
+	if _, err := os.Stat(report); err != nil {
+		t.Fatal(err)
+	}
+	if code, out := runCLI(t, "load", "merge", snaps[0]); code != 2 || !strings.Contains(out, "1 snapshots for a profile in 2 parts") {
+		t.Fatalf("merged an incomplete set: exit %d\n%s", code, out)
+	}
+	if code, out := runCLI(t, "load", featurePath, "--vus", "1", "--duration", "1s", "--part", "2/2"); code != 2 || !strings.Contains(out, "part 2 of 2") {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	if code, out := runCLI(t, "load", featurePath, "--part", "3/2"); code != 2 || !strings.Contains(out, "--part expects") {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+}
+
+func TestListenMetricsServesPrometheus(t *testing.T) {
+	s := &scrape{name: "shop"}
+	s.note(load.Progress{Users: 4, Requests: 20, Failed: 1})
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	stop, bound, err := listenMetrics(ctx, "127.0.0.1:0", s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+bound+"/metrics", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(body)
+	for _, want := range []string{`gi_vus{feature="shop"} 4`, `gi_http_reqs{feature="shop"} 20`, `gi_http_req_failed{feature="shop"} 1`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %s in\n%s", want, got)
+		}
+	}
+}
+
+func TestInitPlanAndDemo(t *testing.T) {
+	t.Chdir(t.TempDir())
+	code, out := runCLI(t, "init")
+	if code != 0 || !strings.Contains(out, "gi mock hello.mock.feature") {
+		t.Fatalf("init exit %d\n%s", code, out)
+	}
+	if code, out = runCLI(t, "init"); code != 2 || !strings.Contains(out, "already exists") {
+		t.Fatalf("second init exit %d\n%s", code, out)
+	}
+	code, out = runCLI(t, "load", "plan", "hello.feature", "--parts", "2", "--start-at", "2026-11-08T16:00:00Z")
+	if code != 0 || !strings.Contains(out, "--part 1/2") || !strings.Contains(out, "--part 2/2") || !strings.Contains(out, "gi load merge") {
+		t.Fatalf("plan exit %d\n%s", code, out)
+	}
+	code, out = runCLI(t, "demo")
+	if code != 0 || !strings.Contains(out, "demo passed") {
+		t.Fatalf("demo exit %d\n%s", code, out)
+	}
+}
+
+func TestTourExamples(t *testing.T) {
+	code, out := runCLI(t, "test", filepath.Join("..", "..", "examples", "tour"))
+	if code != 0 {
+		t.Fatalf("tour exit %d\n%s", code, out)
+	}
+}
+
 func TestCommandHelpVersionAndUsage(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -132,6 +232,7 @@ func TestCommandHelpVersionAndUsage(t *testing.T) {
 		{"test help", []string{"test", "--help"}, 0, "--jobs"},
 		{"load help", []string{"help", "load"}, 0, "--max-endpoints"},
 		{"mock help", []string{"mock", "-h"}, 0, "--addr"},
+		{"check help", []string{"check", "--help"}, 0, "cannot run"},
 		{"version command", []string{"version"}, 0, "gi " + version},
 		{"version flag", []string{"--version"}, 0, "gi " + version},
 		{"short version", []string{"-v"}, 0, "gi " + version},

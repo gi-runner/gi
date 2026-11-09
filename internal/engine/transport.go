@@ -24,6 +24,7 @@ type TransportSettings struct {
 	ProxySet             bool
 	Proxy, NonProxyHosts string
 	ConnectTimeout       time.Duration
+	LocalAddr            string
 }
 
 func (e *exec) configureSSL(val any) error {

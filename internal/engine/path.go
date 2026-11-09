@@ -2,9 +2,10 @@ package engine
 
 import (
 	"fmt"
-	"github.com/gi-runner/gi/internal/feature"
 	"strconv"
 	"strings"
+
+	"github.com/gi-runner/gi/internal/feature"
 
 	"github.com/gi-runner/gi/internal/value"
 	"github.com/gi-runner/gi/internal/xml"
@@ -26,6 +27,21 @@ func splitXMLPath(expr string) (string, string, bool) {
 	}
 	return name, path, strings.HasPrefix(path, "/") || xpathFunction
 }
+
+// doc/root/v is an XPath only when doc holds XML; otherwise it is division.
+func (e *exec) joinedXMLPath(expr string) (string, string, bool) {
+	expr = strings.TrimSpace(expr)
+	slash := strings.IndexByte(expr, '/')
+	if slash <= 0 || !ident(expr[:slash]) {
+		return "", "", false
+	}
+	val, _ := e.vm.Get(expr[:slash])
+	if _, ok := val.(*xml.Document); !ok {
+		return "", "", false
+	}
+	return expr[:slash], expr[slash:], true
+}
+
 func (e *exec) queryXML(name, path string) (any, error) {
 	val, ok := e.vm.Get(name)
 	if !ok {

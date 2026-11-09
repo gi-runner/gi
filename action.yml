@@ -1,0 +1,34 @@
+name: gi
+description: Run feature files as functional tests or load tests
+branding:
+  icon: check-circle
+  color: green
+inputs:
+  version:
+    description: Release tag to install, such as v0.4.0. The default is the latest release.
+    default: latest
+  args:
+    description: Arguments for gi, such as "test features --junit gi.xml"
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Install gi
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        os=$(echo "$RUNNER_OS" | tr '[:upper:]' '[:lower:]'); [ "$os" = macos ] && os=darwin
+        arch=$( [ "$RUNNER_ARCH" = ARM64 ] && echo arm64 || echo amd64 )
+        ext=$( [ "$os" = windows ] && echo zip || echo tar.gz )
+        tag=$( [ "$VERSION" = latest ] && echo "" || echo "$VERSION" )
+        dir="$RUNNER_TEMP/gi"
+        mkdir -p "$dir"
+        gh release download $tag --repo gi-runner/gi --pattern "gi_*_${os}_${arch}.${ext}" --dir "$dir" --clobber
+        cd "$dir"
+        if [ "$ext" = zip ]; then unzip -oq gi_*.zip; else tar -xzf gi_*.tar.gz; fi
+        echo "$dir" >> "$GITHUB_PATH"
+    - name: Run gi
+      shell: bash
+      run: gi ${{ inputs.args }}

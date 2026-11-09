@@ -68,6 +68,8 @@ Inside a structured value, `'#(expression)'` inserts the expression's value. For
 * match user.name == 'Ada'
 ```
 
+`'##(expression)'` does the same, but drops the key when the value is null or undefined.
+
 ## Common steps
 
 | Step | Result |
@@ -116,7 +118,25 @@ Settings apply to the current scenario:
 * configure retry = { count: 5, interval: 200 }
 ```
 
-`timeout` and `retry.interval` are milliseconds. For authentication, headers and retry conditions, see [HTTP](http.md). To keep executing steps after a failure, use `configure continueOnStepFailure = true`.
+`timeout` and `retry.interval` are milliseconds. `gi.configure(key, value)` takes the same keys. An unknown key fails the step, so a typo is caught.
+
+| Key | Effect |
+| --- | --- |
+| `url`, `headers`, `cookies`, `auth`, `charset` | Request defaults. See [HTTP](http.md). |
+| `timeout` / `readTimeout`, `connectTimeout`, `retry`, `httpRetryEnabled` | Timing and retries. |
+| `ssl`, `proxy`, `localAddress`, `followRedirects` | Connection settings. |
+| `strictResponseParsing`, `matchEachEmptyAllowed` | Parsing and `match each` on an empty list. |
+| `continueOnStepFailure` | Keep running steps after a failure. |
+| `abortSuiteOnFailure` | Skip every later scenario in the run after a failure. |
+| `abortedStepsShouldPass` | Report steps after `karate.abort()` as passed instead of skipped. |
+| `beforeScenario`, `afterScenario`, `afterScenarioOutline`, `afterFeature`, `onStepFailure` | Hooks. See [Suite](suite.md#hooks). |
+| `callSingleCache` | `{ minutes, dir }` keeps `callSingle` results on disk across runs. The default directory is the user cache directory. |
+| `report` | `false`, or `{ showLog, showAllSteps }`. `showAllSteps: false` keeps only HTTP, call, attachment and failed steps. |
+| `logging` | `{ console, report, pretty, mask }`. A `console` level above `info` silences `print`; `pretty` indents JSON bodies in reports; `mask: { headers, patterns }` hides more values, and `mask: false` shows secrets. |
+| `cors`, `responseHeaders` | Mock settings. See [HTTP mocks](mock.md). |
+| `driver` | Browser launch settings. See [Browser](browser.md). |
+
+`logPrettyRequest`, `logPrettyResponse`, `printEnabled`, `lowerCaseResponseHeaders` and `logModifier` are accepted and ignored with a warning, as in Karate v2.
 
 ## JavaScript helpers
 

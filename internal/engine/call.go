@@ -46,7 +46,12 @@ func (e *exec) bind() error {
 		Signal:     e.signal,
 		Listen:     e.listen,
 		Embed:      e.embed,
-		Helpers:    registeredHelpers(),
+		Helpers:    e.helpersFor(),
+		Props:      e.props(),
+		MatchExpr:  e.matchExpr,
+		Start:      e.startMock,
+		Track:      e.track,
+		NoProcess:  e.opt.Mock,
 	})
 }
 
@@ -103,6 +108,7 @@ func (e *exec) callSingle(path string, arg any) (any, error) {
 		e.calls = append(e.calls, steps...)
 		return result.vars, err
 	}
+	run = e.sess.singleCache.wrap(key, run)
 	if e.opt.Suite == nil {
 		return run(e.ctx)
 	}
@@ -515,8 +521,7 @@ func (e *exec) mergeCallVars(vars map[string]any) {
 		if strings.HasPrefix(name, "__") {
 			continue
 		}
-		e.vm.Set(name, v)
-		e.defined[name] = true
+		e.setDefined(name, v)
 	}
 }
 func (e *exec) callFunction(ctx context.Context, ref string, arg any, once, shared bool) (any, error) {

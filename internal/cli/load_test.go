@@ -1,12 +1,38 @@
 package cli
 
 import (
-	"github.com/spf13/pflag"
+	"bytes"
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/spf13/pflag"
+
 	"github.com/gi-runner/gi/internal/load"
 )
+
+func TestMetricStream(t *testing.T) {
+	var buf bytes.Buffer
+	calls := 0
+	tick := fanout(nil, metricStream(&buf, "shop"), func(load.Progress) { calls++ })
+	tick(load.Progress{Elapsed: time.Second, Users: 3, Requests: 40, Failed: 1})
+	tick(load.Progress{Elapsed: 2 * time.Second, Users: 4, Requests: 100, Failed: 1})
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 2 || calls != 2 {
+		t.Fatalf("%d calls: %q", calls, buf.String())
+	}
+	var last metricLine
+	if err := json.Unmarshal([]byte(lines[1]), &last); err != nil {
+		t.Fatal(err)
+	}
+	if last.Feature != "shop" || last.Elapsed != 2 || last.Users != 4 || last.Requests != 100 || last.RPS != 60 {
+		t.Fatalf("%+v", last)
+	}
+	if fanout(nil, nil) != nil {
+		t.Fatal("an empty fanout ticks")
+	}
+}
 
 func TestApplyLoadFlags(t *testing.T) {
 	cfg, err := loadFlags(t, "--vus-to", "40", "--duration", "5s")

@@ -63,11 +63,14 @@ The object view uses local names. XPath uses namespace prefixes from the documen
 
 ```gherkin
 * match user /user/name == 'Ada'
+* match user/user/name == 'Ada'
 * set user /user/name = 'Grace'
 * remove user /user/@id
 * def name = gi.xmlPath(user, '/user/name')
 * def names = gi.jsonPath({ users: [{ name: 'Ada' }] }, '$..name')
 ```
+
+When the left-hand name holds XML, `match user/user/name` is the same as `match user /user/name`. Division still applies when the name is a number.
 
 Use XPath set/remove for XML mutation. Scalar and native XML fragment replacement are supported. Simple missing element paths can be created. Path/value tables support scalar XML updates as shown below. Structured object/list insertion and arbitrary complex missing paths remain incomplete. JSONPath supports recursive descent, filters, slices and unions within the native parser's grammar.
 

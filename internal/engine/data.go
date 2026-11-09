@@ -15,8 +15,7 @@ func (e *exec) assign(name string, v any) error {
 	if !ident(name) {
 		return errors.New("name must be an identifier")
 	}
-	e.vm.Set(name, v)
-	e.defined[name] = true
+	e.setDefined(name, v)
 	return nil
 }
 

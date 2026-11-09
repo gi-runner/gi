@@ -16,37 +16,34 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/gi-runner/gi/internal/engine"
 	"github.com/gi-runner/gi/internal/feature"
 	"github.com/gi-runner/gi/internal/httpx"
+	"github.com/gi-runner/gi/internal/script"
 	"github.com/gi-runner/gi/internal/suite"
 )
 
+// Config is a feature's load profile plus how this run executes it.
+// Normalize folds the profile's users, rate, and stage text into Stages.
 type Config struct {
-	VUs          int
-	VUsTo        int
-	UsersToSet   bool
-	Rate         float64
-	RateSet      bool
-	RateTo       float64
-	RateToSet    bool
-	StageText    []string
-	Stages       []Stage
-	MaxInFlight  int
-	MaxEndpoints int
-	Duration     time.Duration
-	Warmup       time.Duration
-	RPS          int
-	Thresholds   []string
-	Vars         map[string]any
-	Client       *http.Client
-	Tag          string
-	Timeout      time.Duration
-	Env          string
-	Suite        *suite.Suite
-	Dial         func(context.Context, string, map[string]any) (engine.Link, error)
-	NewPage      func(context.Context) (engine.Page, error)
+	feature.LoadSpec
+	Stages    []Stage
+	Vars      map[string]any
+	Client    *http.Client
+	Tag       string
+	Timeout   time.Duration
+	Env       string
+	Part      Part
+	Snapshot  string
+	Progress  func(Progress)
+	Suite     *suite.Suite
+	Dial      func(context.Context, string, map[string]any) (engine.Link, error)
+	NewPage   func(context.Context, engine.DriverConfig) (engine.Page, error)
+	StartMock func(context.Context, engine.MockSpec) (script.Server, error)
+	Steps     []engine.StepDef
+	Helpers   map[string]func([]any) (any, error)
 }
 
 type Result struct {
@@ -73,6 +70,16 @@ type Result struct {
 	CPU              time.Duration
 	RSS              uint64
 	Goroutines       int
+	Timeline         []Slot
+}
+
+type Slot struct {
+	Offset   time.Duration
+	Requests int64
+	Errors   int64
+	Mean     time.Duration
+	P95      time.Duration
+	Users    int
 }
 
 type Endpoint struct {
@@ -98,8 +105,26 @@ type Threshold struct {
 	Actual string
 }
 
+// Part is one machine's share of a profile split across Of machines.
+type Part struct {
+	Index int `json:"index"`
+	Of    int `json:"of"`
+}
+
+// Progress is a once-a-second view of a running load test.
+type Progress struct {
+	Elapsed, Total time.Duration
+	Users          int
+	Requests       int64
+	Failed         int64
+}
+
 func Run(ctx context.Context, f *feature.File, cfg Config) (Result, error) {
-	cfg, err := Normalize(cfg)
+	full, err := Normalize(cfg)
+	if err != nil {
+		return Result{}, err
+	}
+	cfg, err = Share(full, full.Part.Index, full.Part.Of)
 	if err != nil {
 		return Result{}, err
 	}
@@ -127,6 +152,7 @@ func Run(ctx context.Context, f *feature.File, cfg Config) (Result, error) {
 	s := &session{
 		f:        f,
 		cfg:      cfg,
+		full:     full,
 		plan:     pl,
 		sender:   sender,
 		started:  started,
@@ -134,6 +160,9 @@ func Run(ctx context.Context, f *feature.File, cfg Config) (Result, error) {
 		end:      started.Add(pl.window()),
 		th:       thresholds,
 		stop:     stop,
+	}
+	if s.mix, err = newMix(f, engine.Options{LoadMode: true, Tag: cfg.Tag, Env: cfg.Env}); err != nil {
+		return Result{}, err
 	}
 	s.initMetrics()
 	if cfg.RPS > 0 {
@@ -156,6 +185,8 @@ func Run(ctx context.Context, f *feature.File, cfg Config) (Result, error) {
 type session struct {
 	f          *feature.File
 	cfg        Config
+	full       Config
+	mix        *mix
 	plan       plan
 	sender     engine.Sender
 	limiter    *bucket
@@ -176,9 +207,11 @@ type session struct {
 	errMu      sync.Mutex
 	runErr     error
 	stop       context.CancelFunc
+	checked    atomic.Int64
 	collectors []collector
 	endpoints  endpointNames
 	metricSeed maphash.Seed
+	userPeak   [timelineSlots]atomic.Uint64
 }
 
 type userSlot struct {
@@ -335,18 +368,21 @@ func (s *session) once(runCtx, userCtx context.Context, lu *collector, due time.
 		return false
 	}
 	opt := engine.Options{
-		Vars:     s.cfg.Vars,
-		HTTP:     s.sender,
-		LoadMode: true,
-		VU:       id,
-		Iter:     iter,
-		Tag:      s.cfg.Tag,
-		Timeout:  s.cfg.Timeout,
-		Env:      s.cfg.Env,
-		Suite:    s.cfg.Suite,
-		Dial:     s.cfg.Dial,
-		NewPage:  s.cfg.NewPage,
-		Jobs:     1,
+		Vars:      s.cfg.Vars,
+		HTTP:      s.sender,
+		LoadMode:  true,
+		VU:        id,
+		Iter:      iter,
+		Tag:       s.cfg.Tag,
+		Timeout:   s.cfg.Timeout,
+		Env:       s.cfg.Env,
+		Suite:     s.cfg.Suite,
+		Dial:      s.cfg.Dial,
+		NewPage:   s.cfg.NewPage,
+		StartMock: s.cfg.StartMock,
+		Steps:     s.cfg.Steps,
+		Helpers:   s.cfg.Helpers,
+		Jobs:      1,
 		OnRequest: func(ex engine.Exchange) {
 			now := time.Now()
 			if now.Before(s.recordAt) || !now.Before(s.end) {
@@ -362,8 +398,12 @@ func (s *session) once(runCtx, userCtx context.Context, lu *collector, due time.
 	if s.limiter != nil {
 		opt.BeforeRequest = s.limiter.wait
 	}
+	file := s.f
+	if s.mix != nil {
+		file = s.mix.next()
+	}
 	iterCtx, cancel := context.WithDeadline(userCtx, s.end)
-	res, err := engine.RunFile(iterCtx, s.f, opt)
+	res, err := engine.RunFile(iterCtx, file, opt)
 	cancel()
 	stopped := userCtx.Err() != nil || !time.Now().Before(s.end)
 	if err != nil {
@@ -407,6 +447,7 @@ func (s *session) watch(ctx context.Context) {
 	memory := []metrics.Sample{{Name: "/memory/classes/heap/objects:bytes"}}
 	sample := func() {
 		peakG = max(peakG, runtime.NumGoroutine())
+		s.noteUsers()
 		// ReadMemStats stops the world; resource sampling must not pause arrivals.
 		metrics.Read(memory)
 		if memory[0].Value.Kind() == metrics.KindUint64 {
@@ -417,8 +458,20 @@ func (s *session) watch(ctx context.Context) {
 	sample()
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
+	var tick <-chan time.Time
+	if s.cfg.Progress != nil {
+		every := time.NewTicker(time.Second)
+		defer every.Stop()
+		tick = every.C
+	}
 	for {
 		select {
+		case now := <-tick:
+			s.maybeAbort()
+			s.cfg.Progress(Progress{
+				Elapsed: now.Sub(s.started), Total: s.end.Sub(s.started), Users: int(max(s.inflight.Load(), 0)),
+				Requests: s.requests.Load(), Failed: s.failures.Load(),
+			})
 		case <-ctx.Done():
 			sample()
 			cpu1, rss := osUsage()
@@ -433,8 +486,62 @@ func (s *session) watch(ctx context.Context) {
 			return
 		case <-ticker.C:
 			sample()
+			s.maybeAbort()
 		}
 	}
+}
+
+func (s *session) maybeAbort() {
+	armed := false
+	for _, th := range s.th {
+		if th.abort {
+			armed = true
+			break
+		}
+	}
+	if !armed || s.stop == nil {
+		return
+	}
+	now := time.Now().UnixNano()
+	if prev := s.checked.Load(); prev != 0 && now-prev < int64(time.Second) {
+		return
+	}
+	s.checked.Store(now)
+	res := s.sample()
+	if res.Iterations == 0 && res.Requests == 0 && res.MissedStarts == 0 && res.LateStarts == 0 {
+		return
+	}
+	got := evalThresholds(s.th, res)
+	for i, th := range got {
+		if !s.th[i].abort || th.Passed || th.Actual == "absent" {
+			continue
+		}
+		s.errMu.Lock()
+		if s.runErr == nil {
+			s.runErr = fmt.Errorf("aborted: %s, actual %s", th.Text, th.Actual)
+			s.stop()
+		}
+		s.errMu.Unlock()
+		return
+	}
+}
+
+func (s *session) sample() Result {
+	locals := make([]*collector, len(s.collectors))
+	for i := range s.collectors {
+		locals[i] = &s.collectors[i]
+	}
+	elapsed := time.Since(s.recordAt)
+	if elapsed < 0 {
+		elapsed = time.Since(s.started)
+	}
+	res := merge(locals, elapsed)
+	res.Elapsed = elapsed
+	res.FailedIterations = s.failures.Load()
+	res.Requests = s.requests.Load()
+	res.MissedStarts = s.missed.Load()
+	res.LateStarts = s.late.Load()
+	return res
 }
 
 func (s *session) finish(ctx context.Context) (Result, error) {
@@ -450,6 +557,9 @@ func (s *session) finish(ctx context.Context) (Result, error) {
 	merged.Started = s.started
 	merged.Elapsed = elapsed
 	merged.Profile = Describe(s.cfg)
+	if p := s.full.Part; p.Of > 1 {
+		merged.Profile += fmt.Sprintf(" (part %d of %d)", p.Index+1, p.Of)
+	}
 	merged.Open = s.cfg.openLoop()
 	if merged.Open {
 		merged.VUs = int(s.peak.Load())
@@ -467,35 +577,58 @@ func (s *session) finish(ctx context.Context) (Result, error) {
 	merged.CPU = s.cpu
 	merged.RSS = s.rss
 	merged.Goroutines = s.goroutines
-	merged.Thresholds = evalThresholds(s.th, merged)
-	merged.Passed = merged.FailedIterations == 0
-	for _, th := range merged.Thresholds {
-		if !th.Passed {
-			merged.Passed = false
+	merged.Timeline = s.timeline(elapsed)
+	applyVerdict(&merged, s.th, s.cfg.Duration)
+	var runErr error
+	if err := ctx.Err(); err != nil {
+		runErr = err
+	}
+	if runErr == nil {
+		s.errMu.Lock()
+		runErr = s.runErr
+		s.errMu.Unlock()
+	}
+	if s.cfg.Snapshot != "" {
+		snap := s.snapshot(merged)
+		if runErr != nil {
+			snap.Err = runErr.Error()
+		}
+		if err := WriteSnapshot(s.cfg.Snapshot, snap); err != nil {
+			return merged, err
 		}
 	}
-	// A run that made no requests did not prove anything.
-	if merged.Requests == 0 && s.cfg.Duration > 0 {
+	if runErr != nil {
 		merged.Passed = false
-	}
-	if err := ctx.Err(); err != nil {
-		merged.Passed = false
-		return merged, err
-	}
-	s.errMu.Lock()
-	err := s.runErr
-	s.errMu.Unlock()
-	if err != nil {
-		merged.Passed = false
-		return merged, err
+		return merged, runErr
 	}
 	return merged, nil
+}
+
+func applyVerdict(res *Result, ths []threshold, duration time.Duration) {
+	res.Thresholds = evalThresholds(ths, *res)
+	res.Passed = res.FailedIterations == 0
+	for _, th := range res.Thresholds {
+		if !th.Passed {
+			res.Passed = false
+		}
+	}
+	if res.Requests == 0 && duration > 0 {
+		res.Passed = false
+	}
+}
+
+const timelineSlots = 30
+
+type sampleSlot struct {
+	errN int64
+	lat  hist
 }
 
 type collector struct {
 	mu        sync.Mutex
 	samples   map[string]*hist
 	errors    map[string]int64
+	slots     [timelineSlots]sampleSlot
 	all       hist
 	sched     hist
 	iters     int64
@@ -533,6 +666,18 @@ func (l *collector) add(ex engine.Exchange) {
 	}
 }
 
+func (l *collector) note(slot int, ex engine.Exchange) {
+	if slot < 0 || slot >= timelineSlots {
+		return
+	}
+	l.mu.Lock()
+	l.slots[slot].lat.add(ex.Duration.Nanoseconds())
+	if ex.Error != "" {
+		l.slots[slot].errN++
+	}
+	l.mu.Unlock()
+}
+
 func (l *collector) addSched(d time.Duration) {
 	if d < 0 {
 		d = 0
@@ -559,34 +704,50 @@ func (l *collector) keep(res engine.FileResult) {
 	}
 }
 
-func merge(locals []*collector, elapsed time.Duration) Result {
-	by := map[string]*hist{}
-	errN := map[string]int64{}
-	var all hist
-	var sched hist
-	var iters, transport int64
-	var failures []engine.ScenarioResult
+type folded struct {
+	all, sched       hist
+	by               map[string]*hist
+	errN             map[string]int64
+	slots            [timelineSlots]sampleSlot
+	iters, transport int64
+	failures         []engine.ScenarioResult
+}
+
+func fold(locals []*collector) folded {
+	out := folded{by: map[string]*hist{}, errN: map[string]int64{}}
 	for _, l := range locals {
 		if l == nil {
 			continue
 		}
-		iters += l.iters
-		transport += l.transport
-		all.merge(l.all)
-		sched.merge(l.sched)
+		l.mu.Lock()
+		out.iters += l.iters
+		out.transport += l.transport
+		out.all.merge(l.all)
+		out.sched.merge(l.sched)
 		for k, s := range l.samples {
-			h := by[k]
+			h := out.by[k]
 			if h == nil {
 				h = &hist{}
-				by[k] = h
+				out.by[k] = h
 			}
 			h.merge(*s)
 		}
 		for k, n := range l.errors {
-			errN[k] += n
+			out.errN[k] += n
 		}
-		failures = append(failures, l.failures...)
+		for b, slot := range l.slots {
+			out.slots[b].lat.merge(slot.lat)
+			out.slots[b].errN += slot.errN
+		}
+		out.failures = append(out.failures, l.failures...)
+		l.mu.Unlock()
 	}
+	return out
+}
+
+func merge(locals []*collector, elapsed time.Duration) Result {
+	got := fold(locals)
+	all, sched, by, errN, iters, transport, failures := got.all, got.sched, got.by, got.errN, got.iters, got.transport, got.failures
 	sec := elapsed.Seconds()
 	if sec <= 0 {
 		sec = 1
@@ -621,6 +782,8 @@ type threshold struct {
 	value  float64
 	unit   string
 	text   string
+	name   string
+	abort  bool
 }
 
 // ParseThresholds parses expressions such as "p95 < 200ms" and "errorRate < 1%".
@@ -637,12 +800,20 @@ func ParseThresholds(in []string) ([]threshold, error) {
 }
 
 func parseThreshold(raw string) (threshold, error) {
-	text := strings.TrimSpace(raw)
-	fields := strings.Fields(text)
-	if len(fields) != 3 {
+	shown := strings.TrimSpace(raw)
+	text := shown
+	abort := false
+	if body, ok := strings.CutSuffix(text, " abort"); ok {
+		abort = true
+		text = strings.TrimSpace(body)
+	}
+	metric, rest, ok := cutToken(text)
+	op, rest, okOp := cutToken(rest)
+	rhs, name, okVal := cutToken(rest)
+	if !ok || !okOp || !okVal {
 		return threshold{}, fmt.Errorf("threshold %q must look like: p95 < 200ms", raw)
 	}
-	metric, op, rhs := fields[0], fields[1], fields[2]
+	name = strings.TrimSpace(name)
 	switch op {
 	case "<", ">", "<=", ">=":
 	default:
@@ -654,6 +825,9 @@ func parseThreshold(raw string) (threshold, error) {
 		"missed", "late":
 	default:
 		return threshold{}, fmt.Errorf("unknown threshold metric %q", metric)
+	}
+	if name != "" && runMetric(metric) {
+		return threshold{}, fmt.Errorf("threshold %q applies to the whole run", raw)
 	}
 	unit := ""
 	var value float64
@@ -694,7 +868,28 @@ func parseThreshold(raw string) (threshold, error) {
 	if metric == "errorRate" && value > 1 {
 		return threshold{}, fmt.Errorf("threshold %q errorRate must be between 0 and 100%%", raw)
 	}
-	return threshold{metric: metric, op: op, value: value, unit: unit, text: text}, nil
+	return threshold{metric: metric, op: op, value: value, unit: unit, text: shown, name: name, abort: abort}, nil
+}
+
+func cutToken(s string) (token, rest string, ok bool) {
+	s = strings.TrimLeftFunc(s, unicode.IsSpace)
+	if s == "" {
+		return "", "", false
+	}
+	i := strings.IndexFunc(s, unicode.IsSpace)
+	if i < 0 {
+		return s, "", true
+	}
+	return s[:i], s[i+1:], true
+}
+
+func runMetric(metric string) bool {
+	switch metric {
+	case "schedP50", "schedP95", "schedP99", "schedMean", "schedMin", "schedMax", "missed", "late":
+		return true
+	default:
+		return false
+	}
 }
 
 func evalThresholds(ths []threshold, res Result) []Threshold {
@@ -709,48 +904,81 @@ func evalThresholds(ths []threshold, res Result) []Threshold {
 	}
 	out := make([]Threshold, 0, len(ths))
 	for _, th := range ths {
-		actual := 0.0
-		shown := ""
-		switch th.metric {
-		case "p50":
-			actual = float64(res.Overall.P50)
-			shown = res.Overall.P50.String()
-		case "p95":
-			actual = float64(res.Overall.P95)
-			shown = res.Overall.P95.String()
-		case "p99":
-			actual = float64(res.Overall.P99)
-			shown = res.Overall.P99.String()
-		case "mean":
-			actual = float64(res.Overall.Mean)
-			shown = res.Overall.Mean.String()
-		case "min":
-			actual = float64(res.Overall.Min)
-			shown = res.Overall.Min.String()
-		case "max":
-			actual = float64(res.Overall.Max)
-			shown = res.Overall.Max.String()
-		case "schedP50", "schedP95", "schedP99", "schedMean", "schedMin", "schedMax":
-			d := schedStat(res.Scheduled, th.metric)
-			actual = float64(d)
-			shown = d.String()
-		case "errorRate":
-			actual = errRate
-			shown = fmt.Sprintf("%.2f%%", errRate*100)
-		case "rps":
-			actual = rps
-			shown = fmt.Sprintf("%.1f", rps)
-		case "missed":
-			actual = float64(res.MissedStarts)
-			shown = strconv.FormatInt(res.MissedStarts, 10)
-		case "late":
-			actual = float64(res.LateStarts)
-			shown = strconv.FormatInt(res.LateStarts, 10)
+		actual, shown, found := th.measure(res, rps, errRate)
+		if !found {
+			out = append(out, Threshold{Text: th.text, Passed: false, Actual: "absent"})
+			continue
 		}
-		ok := compare(actual, th.op, th.value)
-		out = append(out, Threshold{Text: th.text, Passed: ok, Actual: shown})
+		out = append(out, Threshold{Text: th.text, Passed: compare(actual, th.op, th.value), Actual: shown})
 	}
 	return out
+}
+
+func (th threshold) measure(res Result, rps, errRate float64) (float64, string, bool) {
+	if th.name == "" {
+		actual, shown := runMeasure(th.metric, res, rps, errRate)
+		return actual, shown, true
+	}
+	for _, ep := range res.Endpoints {
+		if ep.Name != th.name {
+			continue
+		}
+		actual, shown := callMeasure(th.metric, ep)
+		return actual, shown, true
+	}
+	return 0, "", false
+}
+
+func runMeasure(metric string, res Result, rps, errRate float64) (float64, string) {
+	if d, ok := durationOf(res.Overall, metric); ok {
+		return float64(d), d.String()
+	}
+	switch metric {
+	case "schedP50", "schedP95", "schedP99", "schedMean", "schedMin", "schedMax":
+		d := schedStat(res.Scheduled, metric)
+		return float64(d), d.String()
+	case "errorRate":
+		return errRate, fmt.Sprintf("%.2f%%", errRate*100)
+	case "rps":
+		return rps, fmt.Sprintf("%.1f", rps)
+	case "missed":
+		return float64(res.MissedStarts), strconv.FormatInt(res.MissedStarts, 10)
+	default:
+		return float64(res.LateStarts), strconv.FormatInt(res.LateStarts, 10)
+	}
+}
+
+func callMeasure(metric string, ep Endpoint) (float64, string) {
+	if d, ok := durationOf(ep.Stats, metric); ok {
+		return float64(d), d.String()
+	}
+	if metric == "rps" {
+		return ep.RPS, fmt.Sprintf("%.1f", ep.RPS)
+	}
+	rate := 0.0
+	if ep.Count > 0 {
+		rate = float64(ep.Errors) / float64(ep.Count)
+	}
+	return rate, fmt.Sprintf("%.2f%%", rate*100)
+}
+
+func durationOf(st Stats, metric string) (time.Duration, bool) {
+	switch metric {
+	case "p50":
+		return st.P50, true
+	case "p95":
+		return st.P95, true
+	case "p99":
+		return st.P99, true
+	case "mean":
+		return st.Mean, true
+	case "min":
+		return st.Min, true
+	case "max":
+		return st.Max, true
+	default:
+		return 0, false
+	}
 }
 
 func schedStat(st Stats, metric string) time.Duration {

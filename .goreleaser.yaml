@@ -1,0 +1,43 @@
+version: 2
+
+project_name: gi
+
+builds:
+  - main: ./cmd/gi
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/gi-runner/gi/internal/cli.version={{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files: [LICENSE, NOTICE, README.md]
+
+checksum:
+  name_template: checksums.txt
+
+homebrews:
+  - name: gi
+    repository:
+      owner: gi-runner
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+      branch: main
+    directory: Formula
+    homepage: https://github.com/gi-runner/gi
+    description: Run one feature file as a functional test and a load test
+    license: Apache-2.0
+    skip_upload: "{{ if not .Env.HOMEBREW_TAP_TOKEN }}true{{ end }}"
+    install: |
+      bin.install "gi"
+    test: |
+      system "#{bin}/gi", "version"
+
+changelog:
+  use: github

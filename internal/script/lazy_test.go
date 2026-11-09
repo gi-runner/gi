@@ -72,6 +72,32 @@ func TestDeferredDriverAliasesAndOverrides(t *testing.T) {
 	}
 }
 
+func TestDriverBindsOnFirstMention(t *testing.T) {
+	v := New()
+	if err := v.Bind(Bindings{Driver: func(string, []any) (any, error) { return "page", nil }}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := v.Eval(`typeof click === 'undefined' && typeof text === 'undefined'`)
+	if err != nil || got != true {
+		t.Fatalf("bound before use: %v %v", got, err)
+	}
+	if _, err := v.Eval(`var text = 'mine'`); err != nil {
+		t.Fatal(err)
+	}
+	got, err = v.Eval(`click ('#a') === 'page' && text === 'mine'`)
+	if err != nil || got != true {
+		t.Fatalf("lazy bind: %v %v", got, err)
+	}
+	for src, want := range map[string]bool{
+		`response.value == 1`: false, `obj.text`: false, `'driver'`: true, `driver.url`: true,
+		`waitFor('#x')`: true, `quit()`: false, `clicked(1)`: false,
+	} {
+		if mentionsDriver(src) != want {
+			t.Errorf("mentionsDriver(%q) = %v", src, !want)
+		}
+	}
+}
+
 func TestDeferredDriverUsesCurrentBindings(t *testing.T) {
 	v := New()
 	binding := func(label string) Bindings {

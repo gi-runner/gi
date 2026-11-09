@@ -47,30 +47,40 @@ func (e *exec) logLine(line string) error {
 }
 
 func (e *exec) info() map[string]any {
-	name := ""
+	name, description := "", ""
 	if e.scenario != nil {
-		name = e.scenario.Name
+		name, description = e.scenario.Name, e.scenario.Description
 	}
 	return map[string]any{
 		"scenarioName":        name,
-		"scenarioDescription": "",
+		"scenarioDescription": description,
 		"featureDir":          filepath.Dir(e.file.Path),
 		"featureFileName":     filepath.Base(e.file.Path),
 	}
 }
 
 func (e *exec) scenarioInfo() map[string]any {
-	if e.scenario == nil {
+	sc := e.scenario
+	if sc == nil {
 		return map[string]any{}
 	}
-	return map[string]any{"name": e.scenario.Name, "line": e.scenario.Line}
+	out := map[string]any{
+		"name": sc.Name, "description": sc.Description, "line": sc.Line,
+		"sectionIndex": sc.Section, "exampleIndex": -1,
+	}
+	if sc.Examples != nil {
+		out["exampleIndex"] = sc.Num
+		out["exampleData"] = sc.Row
+	}
+	return out
 }
 
 func (e *exec) featureInfo() map[string]any {
 	return map[string]any{
-		"name":      e.file.Name,
-		"fileName":  filepath.Base(e.file.Path),
-		"parentDir": filepath.Dir(e.file.Path),
+		"name":        e.file.Name,
+		"description": e.file.Description,
+		"fileName":    filepath.Base(e.file.Path),
+		"parentDir":   filepath.Dir(e.file.Path),
 	}
 }
 

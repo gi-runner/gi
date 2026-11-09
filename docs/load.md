@@ -13,7 +13,7 @@ gi load hello.feature --var baseUrl=http://127.0.0.1:18081 \
   --report load.html
 ```
 
-The runner schedules 20 scenario starts per second for five seconds. The summary shows iterations, requests, HTTP latency, missed starts, and a pass/fail result for each threshold. Open `load.html` for the same measurements. Counts and latency depend on the machine and service; work still in flight at the end is cancelled.
+The runner schedules 20 scenario starts per second for five seconds. On a terminal, stderr redraws one line with elapsed time, users, requests, that second's rps, and failed. Piped or redirected output stays quiet. The summary shows iterations, requests, HTTP latency, missed starts, and a pass/fail result for each threshold. Open `load.html` for the same measurements. Counts and latency depend on the machine and service; work still in flight at the end is cancelled.
 
 Exit status `0` means the run and thresholds passed. A failed assertion or threshold exits `1`. Invalid profile options exit `2`.
 
@@ -39,6 +39,43 @@ A user profile and a rate profile cannot be combined. Flags override the comment
 # gi-load: threshold errorRate < 1%
 ```
 
+`# gi-load: vu=10` is the same as `vus=10`.
+
+### Named profiles
+
+`name=` starts another profile in the same file. `gi load` runs each profile to completion, then the next. `--profile spike` runs one. A scenario with no `@load` tag runs in every profile. `@load=spike` runs only in that profile.
+
+```gherkin
+# gi-load: name=soak vus=5 duration=30s
+# gi-load: name=spike rate=20 duration=5s
+
+Scenario: browse
+  * method get
+
+@load=spike
+Scenario: checkout
+  * method post
+```
+
+Add `abort` to a threshold to stop the window once that condition has already failed: `--threshold 'errorRate < 1% abort'`. Other thresholds are still judged when the window ends.
+
+`gi load plan orders.feature --parts 4` prints the `--part` commands and the matching `gi load merge`. A Grafana dashboard for the Prometheus metrics is `examples/grafana/gi-load.json`. `--otel-endpoint` that ends in `/v1/traces` also receives load gauges at the sibling `/v1/metrics` path (`gi.http.reqs`, `gi.http.req_failed`, `gi.http.req_rate`, `gi.http.p95`).
+
+### Scenario mix
+
+By default one iteration runs every selected scenario in the file. Tag scenarios with `@weight=n` and each iteration runs one scenario instead, in proportion to its weight. A selected scenario without the tag counts as weight 1, `@weight=0` keeps it out of load, and `gi test` ignores the tag.
+
+```gherkin
+@weight=8
+Scenario: browse
+  ...
+@weight=2
+Scenario: checkout
+  ...
+```
+
+The order is interleaved and exact: every 10 iterations hold 8 browses and 2 checkouts. An outline is one weighted unit, so all its rows run together.
+
 For example, ramp the quick-start test from 1 to 20 users:
 
 ```bash
@@ -62,6 +99,20 @@ With no comment and no flag, the run is 10 virtual users for 10 seconds. `--rps`
 Repeat `--stage` for each segment. Use `users=10` or `rate=50` to hold a level; `users=1:40` or `rate=10:200` ramps it. `spike users=200` jumps for that stage, then returns to the previous level. Every stage needs a duration, and all stages must use users or all must use rates. Stages replace the simple user/rate/duration flags.
 
 `--warmup` holds the opening level and discards those samples. The stages are the measured window.
+
+### Several machines
+
+One process already uses every core, so add machines, not processes. Give each machine the same profile and its own part:
+
+```bash
+# on each of four machines, i = 1..4
+gi load orders.feature --vus 400 --duration 5m --part $i/4 \
+  --start-at 2026-11-08T16:00:00Z --snapshot part$i.json
+# anywhere, after copying the snapshots
+gi load merge part*.json --report load.html
+```
+
+Virtual users, the start rate, `--rps`, and `--max-inflight` are split so the parts sum to the profile. Each part runs `@setup` itself. The merge joins the histograms, so percentiles and call-site thresholds are judged on the whole run, not averaged. A part needs at least one user and a share of each cap.
 
 ## Read the summary
 
@@ -90,7 +141,11 @@ Login once in `@setup`, then read it with `gi.setupOnce()`. A login inside the s
 
 ## Metrics
 
-Each HTTP call is stored under a path template. UUIDs and numeric segments collapse to `{id}`, so `GET /users/550e8400-e29b-41d4-a716-446655440000` becomes `GET /users/{id}`.
+Each HTTP call is stored under its feature file, line, and path template. UUIDs and numeric segments collapse to `{id}`, so `users.feature:14 GET /users/550e8400-e29b-41d4-a716-446655440000` becomes `users.feature:14 GET /users/{id}`. The same path on another line is its own row.
+
+The measured window is split into 30 slices. Each slice reports the requests in it, transport errors, mean and p95 HTTP latency, and the most users in flight. The HTML and JSON reports include the slices.
+
+`--metrics live.jsonl` writes one JSON line per second while the run is in progress. `--metrics-listen :9090` serves Prometheus text at `/metrics` (`gi_vus`, `gi_http_reqs`, `gi_http_req_failed`, `gi_http_req_rate`) until the run ends.
 
 By default, a run keeps 1,000 named endpoints. Set `--max-endpoints 2000` or `# gi-load: maxEndpoints=2000` to change the limit. Further paths aggregate under `[other endpoints]`; counts, errors, and overall latency still include every request. Reports show the number of requests aggregated.
 
@@ -107,6 +162,8 @@ A threshold is a pass condition, such as `--threshold 'p95 < 200ms'`. All config
 | `missed` `late` | Missed starts, and starts more than 20ms late. |
 
 Operators are `<`, `>`, `<=`, and `>=`. A failed threshold fails the run. Thresholds reject negative and non-finite values. JUnit records failed iterations even when all configured thresholds pass.
+
+Name a call site after the value to judge that call alone: `p95 < 200ms users.feature:14 GET /users/{id}`. On a call site, `errorRate` is transport errors divided by requests to that call, and `rps` is that call's rate. `schedP95`, `missed`, and `late` stay on the whole run. A named call that received no requests fails the threshold.
 
 ??? note "Percentile precision"
 

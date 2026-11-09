@@ -71,9 +71,16 @@ Use either `gi` or `karate` for these helpers:
 | `abort()` | Stops the remaining scenario steps without failing it. |
 | `log(...values)` | Writes values to configured output; suppressed under load and `@report=false`. |
 | `pause(milliseconds)` | Waits, respecting run cancellation. |
-| `info` | Scenario name and feature directory/file name; `scenarioDescription` is currently empty. |
-| `scenario` | Current scenario `name` and `line`. |
-| `feature` | Current feature `name`, `fileName` and `parentDir`. |
+| `info` | Scenario name and description, and the feature directory and file name. |
+| `scenario` | Current scenario `name`, `description`, `line`, `sectionIndex`, `exampleIndex` (-1 outside an outline) and `exampleData`. |
+| `feature` | Current feature `name`, `description`, `fileName` and `parentDir`. |
+| `tags` / `tagValues` | Effective tags without `@`, and `@name=a,b` values as lists. Scenario tags replace feature tags of the same name. |
+| `scenarioOutline` | The outline's `name`, `description`, `line`, `sectionIndex`, `exampleTableCount`, `exampleTables` and `numScenariosToExecute`; null outside an outline. |
+| `prevRequest` | The last request's `method`, `url`, `headers` and `body`, or null. |
+| `response` | The last response's `status`, `body`, `headers`, `responseTime` and `header(name)`. In a mock, `request` and `response` describe the incoming call. |
+| `fail(message)` | Fails the step with `message`. |
+| `remove(name, path)` | Removes a JSON path or XPath from a variable, as the `remove` step does. |
+| `set(name, path, value)` | Sets a path inside a variable. The two-argument form sets the variable. |
 | `write(value, path)` | Writes text, bytes, XML or JSON beneath the project `target/` directory and returns the full path. Absolute paths and `..` escapes are rejected. |
 | `waitForHttp(url, options)` | Polls GET until status 200-399. Options: `timeout` (default 30000 ms) and `interval` (default 250 ms). |
 | `waitForPort(host, port, timeout, interval)` | Waits for a TCP connection; timeout and interval default to 30000 and 250 ms. |
@@ -86,5 +93,42 @@ Use either `gi` or `karate` for these helpers:
 * karate.waitForHttp(baseUrl + '/health', { timeout: 5000, interval: 100 })
 * def saved = karate.write({ status: 'ready' }, 'status.json')
 ```
+
+## Text, data and assertions
+
+| Helper | Behavior |
+| --- | --- |
+| `extract(text, regex, group)` / `extractAll(text, regex, group)` | The first match's group, or null; every match's group. |
+| `toCsv(list)` | CSV text with a header row from a list of objects. |
+| `fromCsv(text)` | A list of objects from CSV text with a header row. Empty text is `[]`. |
+| `prettyXml(document)` | Indented XML without a declaration. |
+| `setXml(name, xml)` / `setXml(name, path, xml)` | Parses XML into a variable, or into a path inside it. |
+| `match(actual, expected)` / `match('expr')` | `{ pass, message }` for an equality check or a full match expression, without failing the step. |
+| `expect(value)` | Chai-style chain: `to.equal`, `to.eql`, `to.include`, `to.have.property`, `to.have.keys`, `to.be.above`, `to.be.within`, `to.match`, `to.be.a('string')`, `not`, and more. Fails the step on a miss. |
+| `eval(source)` | Evaluates JavaScript in the scenario's scope. |
+| `faker` | Random test data: `firstName()`, `email()`, `phoneNumber()`, `city()`, `randomInt(min, max)`, `alphanumeric(n)`, `isoTimestamp()`, `creditCardNumber()`, and more. |
+| `logger` | `debug`, `info`, `warn` and `error`, each like `log` with a level prefix. |
+
+```gherkin
+* def id = karate.extract('order-42 created', 'order-(\\d+)', 1)
+* match id == '42'
+* karate.expect({ total: 30, items: [1, 2] }).to.have.property('total').above(10)
+* def email = karate.faker.email()
+```
+
+## System and processes
+
+| Helper | Behavior |
+| --- | --- |
+| `os` | `{ type, name }`, where type is `windows`, `macosx`, `linux` or `unknown`. |
+| `sysenv(name, fallback)` | An environment variable, or the fallback when it is empty or unset. |
+| `properties` | Process environment as a map. `--env` is also `properties['karate.env']`. |
+| `sysprop(name, fallback)` | One environment value, or the fallback when unset. `sysprop('karate.env')` is `--env`. |
+| `toAbsolutePath(path)` | Resolves a path such as `classpath:` or `this:` to an absolute path. |
+| `exec(command)` | Runs a command and returns its standard output. Accepts a string, a list, or `{ args, line, useShell, workingDir, env, timeout }`. |
+| `fork(options)` | Starts a process and returns a handle with `stdOut`, `stdErr`, `alive`, `pid`, `exitCode`, `waitSync()`, `waitForOutput(fn)`, `onStdOut(fn)`, `signal(name)` and `close()`. Options add `listener`, `errorListener` and `start`. The process stops when the scenario ends. |
+| `start(mock)` | Starts a mock feature on its own port and returns `{ url, port, ssl, stop() }`. See [HTTP mocks](mock.md#start-a-mock-from-a-scenario). |
+
+`exec` and `fork` are not available inside a mock.
 
 For Go functions exposed to scenarios, see [Embedding](embedding.md).

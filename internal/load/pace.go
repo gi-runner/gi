@@ -29,6 +29,12 @@ func Normalize(cfg Config) (Config, error) {
 	if cfg.Warmup < 0 || cfg.VUs < 0 || cfg.VUsTo < 0 || cfg.RPS < 0 || cfg.MaxInFlight < 0 || cfg.MaxEndpoints < 0 || badNum(cfg.Rate) || badNum(cfg.RateTo) {
 		return Config{}, errors.New("load profile values must be finite and nonnegative")
 	}
+	if cfg.Part == (Part{}) {
+		cfg.Part = Part{Of: 1}
+	}
+	if cfg.Part.Of < 1 || cfg.Part.Index < 0 || cfg.Part.Index >= cfg.Part.Of {
+		return Config{}, errors.New("load part is out of range")
+	}
 	if cfg.MaxEndpoints == 0 {
 		cfg.MaxEndpoints = 1000
 	}
@@ -40,15 +46,15 @@ func Normalize(cfg Config) (Config, error) {
 		cfg.Stages = append(cfg.Stages, st)
 	}
 	cfg.StageText = nil
-	legacy := cfg.VUs > 0 || cfg.UsersToSet || cfg.RateSet || cfg.RateToSet || cfg.Rate > 0
-	if len(cfg.Stages) > 0 && legacy {
+	profiled := cfg.VUs > 0 || cfg.UsersToSet || cfg.RateSet || cfg.RateToSet || cfg.Rate > 0
+	if len(cfg.Stages) > 0 && profiled {
 		return Config{}, errors.New("load stages replace virtual users and a start rate")
 	}
 	if len(cfg.Stages) == 0 {
 		if cfg.Duration <= 0 {
 			cfg.Duration = 10 * time.Second
 		}
-		st, err := legacyStage(cfg)
+		st, err := profileStage(cfg)
 		if err != nil {
 			return Config{}, err
 		}
@@ -70,7 +76,7 @@ func Normalize(cfg Config) (Config, error) {
 	return cfg, nil
 }
 
-func legacyStage(cfg Config) (Stage, error) {
+func profileStage(cfg Config) (Stage, error) {
 	if cfg.RateSet || cfg.RateToSet || cfg.Rate > 0 {
 		to := cfg.Rate
 		if cfg.RateToSet {
@@ -89,7 +95,7 @@ func legacyStage(cfg Config) (Stage, error) {
 	}
 	from := cfg.VUs
 	if !cfg.UsersToSet && from < 1 {
-		from = 1
+		from = 10
 	}
 	st := Stage{From: float64(from), Duration: cfg.Duration}
 	if cfg.UsersToSet {

@@ -211,7 +211,7 @@ func (e *exec) driverStep(ctx context.Context, expr string) error {
 		if e.opt.NewPage == nil {
 			return errors.New("browser is not set")
 		}
-		page, err := e.opt.NewPage(ctx)
+		page, err := e.opt.NewPage(ctx, e.sess.driver)
 		if err != nil {
 			return err
 		}

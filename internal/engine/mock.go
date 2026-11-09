@@ -48,6 +48,11 @@ func (ex *exec) initMock(prepare func(*script.VM)) error {
 	return nil
 }
 
+// Settings reports what the mock Background configured for every response.
+func (m *MockRuntime) Settings() (cors bool, headers map[string]any) {
+	return m.ex.sess.cors, m.ex.sess.mockHeaders
+}
+
 func (m *MockRuntime) Run(ctx context.Context, vars map[string]any) ScenarioResult {
 	e := m.ex
 	stop, err := e.vm.Watch(ctx)

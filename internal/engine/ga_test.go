@@ -91,7 +91,7 @@ Scenario: attach
 * karate.embed('callback arrived', 'text/plain', 'trace')
 `), engine.Options{
 		Vars:    map[string]any{"pageUrl": "http://page.test"},
-		NewPage: func(context.Context) (engine.Page, error) { return page, nil },
+		NewPage: func(context.Context, engine.DriverConfig) (engine.Page, error) { return page, nil },
 	})
 	if err != nil {
 		t.Fatal(err)

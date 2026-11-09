@@ -30,47 +30,9 @@ var matchOps = []op{
 }
 
 func (e *exec) match(rest, doc string, sr *StepResult) error {
-	each := false
-	body := strings.TrimSpace(rest)
-	if strings.HasPrefix(body, "each ") {
-		each = true
-		body = strings.TrimSpace(body[len("each "):])
-	}
-	lhs, mode, rhs, ok := splitMatch(body)
-	if !ok {
-		return errors.New("match expects: match <actual> <operator> <expected>")
-	}
-	if strings.TrimSpace(rhs) == "" {
-		rhs = doc
-	}
-	if strings.TrimSpace(rhs) == "" {
-		return errors.New("match is missing the expected value")
-	}
-	actual, err := e.evalMatchSide(lhs)
+	res, err := e.evaluateMatch(rest, doc)
 	if err != nil {
 		return err
-	}
-	expected, err := e.eval(rhs)
-	if err != nil {
-		return err
-	}
-	if a, ok := actual.(*xml.Document); ok {
-		if b, ok := expected.(*xml.Document); ok {
-			actual, expected = a.Comparable(), b.Comparable()
-		}
-	}
-	ctx := match.Context{
-		Truthy: e.vm.Truthy,
-		Eval:   e.vm.Eval,
-	}
-	var res match.Result
-	if each {
-		if arr, ok := value.AsSlice(actual); ok && len(arr) == 0 && e.sess.matchEachEmpty {
-			return nil
-		}
-		res = match.MatchEach(actual, expected, mode, ctx)
-	} else {
-		res = match.Match(actual, expected, mode, ctx)
 	}
 	if res.Pass {
 		return nil
@@ -87,6 +49,54 @@ func (e *exec) match(rest, doc string, sr *StepResult) error {
 		msg = sr.Label
 	}
 	return errors.New(msg)
+}
+
+func (e *exec) evaluateMatch(rest, doc string) (match.Result, error) {
+	each := false
+	body := strings.TrimSpace(rest)
+	if strings.HasPrefix(body, "each ") {
+		each = true
+		body = strings.TrimSpace(body[len("each "):])
+	}
+	lhs, mode, rhs, ok := splitMatch(body)
+	if !ok {
+		return match.Result{}, errors.New("match expects: match <actual> <operator> <expected>")
+	}
+	if strings.TrimSpace(rhs) == "" {
+		rhs = doc
+	}
+	if strings.TrimSpace(rhs) == "" {
+		return match.Result{}, errors.New("match is missing the expected value")
+	}
+	actual, err := e.evalMatchSide(lhs)
+	if err != nil {
+		return match.Result{}, err
+	}
+	expected, err := e.eval(rhs)
+	if err != nil {
+		return match.Result{}, err
+	}
+	if a, ok := actual.(*xml.Document); ok {
+		if b, ok := expected.(*xml.Document); ok {
+			actual, expected = a.Comparable(), b.Comparable()
+		}
+	}
+	ctx := match.Context{Truthy: e.vm.Truthy, Eval: e.vm.Eval}
+	if !each {
+		return match.Match(actual, expected, mode, ctx), nil
+	}
+	if arr, ok := value.AsSlice(actual); ok && len(arr) == 0 && e.sess.matchEachEmpty {
+		return match.Result{Pass: true}, nil
+	}
+	return match.MatchEach(actual, expected, mode, ctx), nil
+}
+
+func (e *exec) matchExpr(expr string) (bool, string, error) {
+	res, err := e.evaluateMatch(expr, "")
+	if err == nil && res.Err != nil {
+		err = res.Err
+	}
+	return res.Pass, res.Message, err
 }
 
 func (e *exec) evalMatchSide(lhs string) (any, error) {
@@ -111,6 +121,9 @@ func (e *exec) evalMatchSide(lhs string) (any, error) {
 		return value.Absent{}, nil
 	}
 	if name, path, ok := splitXMLPath(lhs); ok {
+		return e.queryXML(name, path)
+	}
+	if name, path, ok := e.joinedXMLPath(lhs); ok {
 		return e.queryXML(name, path)
 	}
 	if strings.HasPrefix(lhs, "/") {

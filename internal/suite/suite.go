@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/gi-runner/gi/internal/value"
 )
@@ -20,11 +21,13 @@ type Suite struct {
 	Overlay string
 	Err     error
 
-	locks  scenarioLocks
-	mu     sync.Mutex
-	once   map[string]*flight
-	single map[string]*flight
-	box    mailbox
+	locks   scenarioLocks
+	mu      sync.Mutex
+	once    map[string]*flight
+	single  map[string]*flight
+	box     mailbox
+	warned  map[string]bool
+	aborted atomic.Bool
 }
 
 type flight struct {
