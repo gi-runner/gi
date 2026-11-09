@@ -22,22 +22,22 @@ archives:
 checksum:
   name_template: checksums.txt
 
-homebrew_casks:
+homebrews:
   - name: gi
     repository:
       owner: gi-runner
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    skip_upload: "{{ if not .Env.HOMEBREW_TAP_TOKEN }}true{{ end }}"
+      branch: main
+    directory: Formula
     homepage: https://github.com/gi-runner/gi
-    description: Run feature files as API, browser, mock, and load tests in one binary
+    description: Run one feature file as a functional test and a load test
     license: Apache-2.0
-    hooks:
-      post:
-        install_steps: |
-          on_macos do
-            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/gi"]
-          end
+    skip_upload: "{{ if not .Env.HOMEBREW_TAP_TOKEN }}true{{ end }}"
+    install: |
+      bin.install "gi"
+    test: |
+      system "#{bin}/gi", "version"
 
 changelog:
   use: github

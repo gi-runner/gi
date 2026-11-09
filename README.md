@@ -20,11 +20,11 @@ Keep requests, test data and assertions in one feature file. Run it with `gi tes
 [REST, GraphQL and SOAP](https://gi-runner.github.io/gi/http/) · [Browser automation](https://gi-runner.github.io/gi/browser/) · [WebSocket, gRPC and Kafka](https://gi-runner.github.io/gi/protocols/)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gi-runner/gi/main/install.sh | sh
+brew install gi-runner/tap/gi
 gi demo
 ```
 
-`gi demo` checks a greeting, then runs that same check under load. [Install](https://gi-runner.github.io/gi/install/) covers Go, Homebrew, and editors. From Go, `go install github.com/gi-runner/gi/cmd/gi@latest` needs Go 1.27.2 or newer.
+`gi demo` checks a greeting, then runs that same check under load. [Install](https://gi-runner.github.io/gi/install/) also covers the shell script, Go, and editors.
 
 For example, `examples/users.feature` creates a user and reads it back:
 

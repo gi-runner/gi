@@ -1,13 +1,22 @@
 # Install
 
-The five-minute path is a binary, then `gi demo`.
+The five-minute path is Homebrew, then `gi demo`.
+
+```bash
+brew install gi-runner/tap/gi
+gi demo
+```
+
+That taps `gi-runner/homebrew-tap` and installs the release binary. No Go toolchain is required. Linux Homebrew uses the same command.
+
+Without Homebrew:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gi-runner/gi/main/install.sh | sh
 gi demo
 ```
 
-The script unpacks a release into `/usr/local/bin`. Until the first release is published it builds with Go instead, which needs [Go](https://go.dev/dl/) 1.27.2 or newer. Set `GI_INSTALL_DIR` to choose another directory.
+The script unpacks a release into `/usr/local/bin`. Set `GI_INSTALL_DIR` to choose another directory. It builds with Go, which needs [Go](https://go.dev/dl/) 1.27.2 or newer, only when the release archive is missing.
 
 From a checkout of this repository, `make build` writes `bin/gi`, and `./bin/gi demo` is the same first run.
 
@@ -59,13 +68,11 @@ The [VS Code extension](https://github.com/gi-runner/gi/tree/main/editors/vscode
 
 GoLand and IntelliJ read the TextMate bundle at `editors/idea/gi.tmbundle`. In **Settings → Editor → TextMate Bundles**, add that directory. A failed step prints `file:line` in the terminal. That is the debugger for the first hour: the failing step, then `report.html`.
 
-Homebrew, from a checkout, until the release tap exists:
+From a checkout, before a tagged release exists:
 
 ```bash
 brew install --HEAD ./packaging/homebrew/gi.rb
 ```
-
-The release workflow publishes a cask when `HOMEBREW_TAP_TOKEN` is set. The cask repository is created by that publish.
 
 ## If installation fails
 
