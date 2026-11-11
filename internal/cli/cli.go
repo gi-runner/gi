@@ -45,10 +45,7 @@ func runTest(args []string, opt testOptions) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	started := time.Now()
-	n := opt.jobs
-	if n < 1 {
-		n = runtime.GOMAXPROCS(0)
-	}
+	n := testJobs(files, opt.jobs)
 	sender := httpx.New(nil)
 	defer sender.CloseIdleConnections()
 	options := engine.Options{
@@ -85,6 +82,30 @@ func runTest(args []string, opt testOptions) int {
 		return 1
 	}
 	return 0
+}
+
+// A single spec-generated feature keeps the story's scenario order.
+// Any other default uses every core. An explicit --jobs wins.
+func testJobs(files []string, requested int) int {
+	if requested > 0 {
+		return requested
+	}
+	if len(files) == 1 && specOwned(files[0]) {
+		return 1
+	}
+	return runtime.GOMAXPROCS(0)
+}
+
+func specOwned(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = f.Close() }()
+	buf := make([]byte, 64)
+	n, _ := f.Read(buf)
+	line, _, _ := strings.Cut(string(buf[:n]), "\n")
+	return strings.HasPrefix(strings.TrimSpace(line), "# gi-spec:")
 }
 
 func runCheck(args []string) int {

@@ -8,6 +8,7 @@
 <p align="center">
   <a href="https://go.dev/dl/"><img src="https://img.shields.io/badge/Go-1.27.2-00ADD8?logo=go&logoColor=white" alt="Go 1.27.2"></a>
   <a href="https://github.com/gi-runner/gi/actions/workflows/ci.yml"><img src="https://github.com/gi-runner/gi/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/gi-runner/gi/releases"><img src="https://img.shields.io/github/v/release/gi-runner/gi" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue" alt="Apache 2.0"></a>
   <a href="https://gi-runner.github.io/gi/"><img src="https://img.shields.io/badge/docs-online-009688" alt="Documentation"></a>
   <a href="https://pkg.go.dev/github.com/gi-runner/gi"><img src="https://pkg.go.dev/badge/github.com/gi-runner/gi.svg" alt="Go Reference"></a>
@@ -33,7 +34,7 @@ gi demo
 | Test | one feature file | Go functions | JavaScript |
 | Spec | `gi spec` from the spec directory | write the steps | write the script |
 | Mock | the same file | your own server | your own server |
-| Load | the same file, soak and spike together | no load run | a second script |
+| Load | the same file, soak and spike together, split across machines with `--part` | no load run | a second script |
 | Try it | `brew install`, then `gi demo` | write the steps | write the script |
 
 For example, `examples/users.feature` creates a user and reads it back:

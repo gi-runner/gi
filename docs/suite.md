@@ -49,6 +49,7 @@ Run `gi test features/`. Keep mock files outside that test directory. Tag called
 | --- | --- |
 | Several files, `--jobs 4` | Four features. Scenarios inside a feature stay in order. |
 | One file, `--jobs 4` | Four scenarios of that file. |
+| One `# gi-spec` file, `--jobs` omitted | That file's scenarios, in order. |
 | `--jobs 1` | One feature at a time, scenarios in order. |
 
 Use `--jobs 1` when scenarios depend on each other's data, or `@lock` to serialize only the scenarios that share data. A single file runs scenarios concurrently when `--jobs` is greater than 1. `configure abortSuiteOnFailure = true` in config skips every scenario that has not started once one fails.

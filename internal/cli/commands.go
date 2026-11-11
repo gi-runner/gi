@@ -82,7 +82,7 @@ func newTestCommand(code *int) *cobra.Command {
 		Run: func(_ *cobra.Command, args []string) { *code = runTest(args, opt) },
 	}
 	opt.flags(cmd.Flags())
-	cmd.Flags().IntVar(&opt.jobs, "jobs", 0, "Features to run concurrently (default: CPU count; 1 keeps order)")
+	cmd.Flags().IntVar(&opt.jobs, "jobs", 0, "Features to run concurrently (default: CPU count, or 1 for one # gi-spec file)")
 	return cmd
 }
 

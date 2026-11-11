@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -392,5 +393,31 @@ Scenario: checkout
 	}
 	if !soak.last.After(spike.first) {
 		t.Fatalf("spike began after soak ended: soak %s-%s spike %s", soak.first, soak.last, spike.first)
+	}
+}
+
+func TestSpecFeatureKeepsScenarioOrder(t *testing.T) {
+	dir := t.TempDir()
+	spec := filepath.Join(dir, "reminder.feature")
+	plain := filepath.Join(dir, "plain.feature")
+	body := "# gi-spec: reminder\nFeature: Reminder\nScenario: one\n  * method get\n"
+	if err := os.WriteFile(spec, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(plain, []byte("Feature: Plain\nScenario: one\n  * method get\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := testJobs([]string{spec}, 0); got != 1 {
+		t.Fatalf("spec jobs = %d", got)
+	}
+	if got := testJobs([]string{spec}, 4); got != 4 {
+		t.Fatalf("explicit jobs = %d", got)
+	}
+	want := runtime.GOMAXPROCS(0)
+	if got := testJobs([]string{plain}, 0); got != want {
+		t.Fatalf("plain jobs = %d, want %d", got, want)
+	}
+	if got := testJobs([]string{spec, plain}, 0); got != want {
+		t.Fatalf("mixed jobs = %d, want %d", got, want)
 	}
 }
