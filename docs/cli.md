@@ -29,7 +29,7 @@ Flags may follow the file path. Use `--` before paths beginning with `-`. `gi te
 | `--env name` | Loads `gi-config-<env>.js` and selects `@env` tags. |
 | `--var key=value` | A variable. Repeat the flag. Wins over config. |
 | `--tag expr` | Tag expression. See [Suite](suite.md). |
-| `--jobs n` | Features in parallel. Default is the CPU count. `1` keeps order. See [Suite](suite.md). |
+| `--jobs n` | Features in parallel. Default is the CPU count, or 1 for a single `# gi-spec` file. `1` keeps order. See [Suite](suite.md). |
 | `--timeout 30s` | Per-request timeout. |
 | `--report file.html` | HTML report. |
 | `--junit file.xml` | JUnit XML. |

@@ -17,6 +17,8 @@ The runner schedules 20 scenario starts per second for five seconds. On a termin
 
 Exit status `0` means the run and thresholds passed. A failed assertion or threshold exits `1`. Invalid profile options exit `2`.
 
+One process uses every core. [`gi load plan`](cli.md) splits that profile across machines, and `gi load merge` judges the combined run. The report stores histograms, not every exchange.
+
 ## Choose a profile
 
 - **Users (`--vus`):** each virtual user finishes a scenario, then starts it again. A slower service reduces throughput. This is a closed-loop test.

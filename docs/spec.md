@@ -1,6 +1,6 @@
 # Specs
 
-`gi spec` reads a Spec Kit, Kiro, or OpenSpec directory and writes one gi feature per user story. `gi load` runs that feature when the spec states a concurrency or a request rate.
+`gi spec` reads a Spec Kit, Kiro, or OpenSpec directory and writes one gi feature per user story. It does not plan the change or write the service. `gi load` runs that feature when the spec states a concurrency or a request rate.
 
 ```bash
 gi spec --json specs/001-payment
@@ -11,6 +11,8 @@ gi test specs/001-payment/features --var baseUrl=http://127.0.0.1:8080
 Name the call in When: `POST /invoices/{id}/reminders`. One OpenAPI operation can omit the path. Two operations and no path are a `skipped` note. A path parameter, required header, cookie, body field, or security credential without an `example` is an `example` note, and that call is not written. `http`, `oauth2`, and `openIdConnect` use `Authorization`. An empty security requirement is public. A concrete path such as `/invoices/inv_1/reminders` supplies the example. A response schema becomes a `match`. `NEEDS CLARIFICATION` stays in the report. The scenario comment is the spec line.
 
 `--json` prints `files` and `notes`. Exit 0 means a feature was written, 1 means nothing was written, 2 means the path is wrong.
+
+One spec feature runs its scenarios in order. `--jobs` runs those scenarios at once, so use it when each scenario stands alone. A directory of spec features still runs each file's scenarios in order.
 
 `50 concurrent users` and `p95 under 200ms` become:
 
