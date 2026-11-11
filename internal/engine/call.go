@@ -406,6 +406,7 @@ func (e *exec) callOptions(stack []string) Options {
 	opt.SkipHooks = true
 	opt.Stack = append([]string{}, stack...)
 	opt.Prepare = nil
+	opt.Worker = nil
 	opt.Jobs = 1
 	return opt
 }

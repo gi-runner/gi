@@ -279,13 +279,21 @@ func (s *session) startUser(runCtx context.Context, wg *sync.WaitGroup, slots []
 	done := make(chan struct{})
 	slots[id].stop, slots[id].done = stop, done
 	lu := &s.collectors[id%len(s.collectors)]
+	vm := script.New()
+	release, err := vm.Watch(userCtx)
+	if err != nil {
+		stop()
+		close(done)
+		return
+	}
 	wg.Go(func() {
 		defer close(done)
 		defer stop()
+		defer release()
 		// Only this worker owns the counter; a replacement waits for done.
 		for {
 			slots[id].iterations++
-			if !s.once(runCtx, userCtx, lu, time.Time{}, id+1, slots[id].iterations) {
+			if !s.once(runCtx, userCtx, lu, time.Time{}, id+1, slots[id].iterations, vm) {
 				return
 			}
 		}
@@ -328,7 +336,7 @@ func (s *session) runOpen(runCtx context.Context) {
 				defer s.inflight.Add(-1)
 			}
 			lu := &s.collectors[(id-1)%len(s.collectors)]
-			s.once(runCtx, runCtx, lu, due, id, 1)
+			s.once(runCtx, runCtx, lu, due, id, 1, nil)
 		})
 	}
 	wg.Wait()
@@ -370,7 +378,7 @@ func (s *session) noteLag(lag time.Duration) {
 	}
 }
 
-func (s *session) once(runCtx, userCtx context.Context, lu *collector, due time.Time, id, iter int) bool {
+func (s *session) once(runCtx, userCtx context.Context, lu *collector, due time.Time, id, iter int, vm *script.VM) bool {
 	if runCtx.Err() != nil || userCtx.Err() != nil || !time.Now().Before(s.end) {
 		return false
 	}
@@ -391,6 +399,7 @@ func (s *session) once(runCtx, userCtx context.Context, lu *collector, due time.
 		Helpers:   s.cfg.Helpers,
 		Tokens:    s.tokens,
 		Jobs:      1,
+		Worker:    vm,
 		OnRequest: func(ex engine.Exchange) {
 			now := time.Now()
 			if now.Before(s.recordAt) || !now.Before(s.end) {

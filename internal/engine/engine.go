@@ -41,14 +41,16 @@ type Options struct {
 	Steps         []StepDef
 	Helpers       map[string]func([]any) (any, error)
 	// Tokens shares one OAuth cache across the scenarios and iterations of this run.
-	Tokens         *TokenCache
-	Depth          int
-	Env            string
-	Suite          *suite.Suite
-	SkipHooks      bool
-	Stack          []string
-	inherited      *session
-	vm             *script.VM
+	Tokens    *TokenCache
+	Depth     int
+	Env       string
+	Suite     *suite.Suite
+	SkipHooks bool
+	Stack     []string
+	inherited *session
+	vm        *script.VM
+	// Worker is one load worker's runtime, reused across iterations of that worker.
+	Worker         *script.VM
 	page           Page
 	skipConfig     bool
 	reportDisabled bool
@@ -326,6 +328,9 @@ func parallel(n, count int, fn func(int)) {
 
 // Background steps are already inlined into each scenario.
 func RunFile(ctx context.Context, f *feature.File, opt Options) (FileResult, error) {
+	if opt.vm == nil {
+		opt.vm = opt.Worker
+	}
 	started := time.Now()
 	opt.Stdout = synchronizeWriter(opt.Stdout)
 	if opt.Tokens == nil {
@@ -469,6 +474,9 @@ func runScenario(ctx context.Context, f *feature.File, sc feature.Scenario, opt 
 	}
 	defer func() {
 		defer stop()
+		if opt.Worker != nil && opt.Depth == 0 {
+			ex.forgetDefined()
+		}
 		ex.sess.out.shape(&res)
 		if finish != nil {
 			finish(ex)
@@ -539,7 +547,7 @@ func (ex *exec) seed() error {
 	vm, opt, sc := ex.vm, ex.opt, ex.scenario
 	vm.Set("vu", int64(max(opt.VU, 1)))
 	vm.Set("iter", int64(max(opt.Iter, 1)))
-	if opt.vm == nil {
+	if opt.vm == nil || (opt.Worker != nil && opt.Depth == 0) {
 		for k, v := range opt.Vars {
 			vm.Set(k, v)
 		}
@@ -801,6 +809,15 @@ func (e *exec) setDefined(name string, val any) {
 	e.defined[name] = true
 }
 
+func (e *exec) forgetDefined() {
+	for name := range e.defined {
+		if _, keep := e.opt.Vars[name]; keep {
+			continue
+		}
+		e.vm.Set(name, value.Absent{})
+	}
+}
+
 func (e *exec) print(expr string, sr *StepResult) error {
 	args, err := e.evalArgs(expr)
 	if err != nil {
@@ -910,6 +927,9 @@ func splitAssign(s string) (lhs, rhs string, ok bool) {
 func (e *exec) evalArgs(src string) ([]any, error) {
 	if strings.TrimSpace(src) == "" {
 		return nil, errors.New("missing expression")
+	}
+	if args, ok := script.LiteralList(src); ok {
+		return args, nil
 	}
 	data, err := e.eval("[" + src + "]")
 	if err != nil {

@@ -44,6 +44,8 @@ type VM struct {
 	retryN      int
 	retryEvery  time.Duration
 	retryUntil  string
+	clean       map[string]bool // Go value is current until JavaScript runs
+	jsDepth     int
 }
 
 func New() *VM {
@@ -84,27 +86,45 @@ func (v *VM) leasedContext(ctx context.Context) context.Context {
 func (v *VM) Set(name string, val any) {
 	if hasJSFunc(val) {
 		v.vars[name] = val
+		delete(v.clean, name)
 		_ = v.rt.Set(name, v.toJS(val))
 		return
 	}
 	if value.IsAbsent(val) {
 		delete(v.vars, name)
+		delete(v.clean, name)
 		_ = v.rt.Set(name, sobek.Undefined())
 		return
 	}
 	if h, ok := val.(host); ok {
 		v.vars[name] = h
+		delete(v.clean, name)
 		_ = v.rt.Set(name, h.v)
 		return
 	}
 	val = value.Normalize(val)
 	v.vars[name] = val
-	_ = v.rt.Set(name, v.jsValue(val))
+	if v.clean == nil {
+		v.clean = map[string]bool{}
+	}
+	v.clean[name] = true
+	if v.jsDepth > 0 {
+		_ = v.rt.Set(name, v.jsValue(val))
+		return
+	}
+	_ = v.rt.Set(name, sobek.Undefined())
 }
 
 func (v *VM) Get(name string) (any, bool) {
 	if h, ok := v.vars[name].(host); ok {
 		return h, true
+	}
+	if v.clean[name] {
+		val, ok := v.vars[name]
+		if !ok || value.IsAbsent(val) {
+			return nil, false
+		}
+		return val, true
 	}
 	rv := v.rt.Get(name)
 	if rv == nil || sobek.IsUndefined(rv) {
@@ -298,12 +318,16 @@ func (v *VM) eval(expr string) (any, error) {
 	if got, handled, err := v.advancedPath(expr); handled {
 		return got, err
 	}
-	if expr != "true" && expr != "false" && expr != "null" {
-		if segs, ok := parsePath(expr); ok {
-			root := v.rt.Get(segs[0].name)
-			if _, host := asHost(root); !host || len(segs) == 1 {
-				return v.evalLive(segs)
-			}
+	if lit, ok := literal(expr); ok {
+		return lit, nil
+	}
+	if segs, ok := parsePath(expr); ok {
+		if len(segs) > 0 && segs[0].kind == segField && v.clean[segs[0].name] {
+			return evalPath(v.vars, segs)
+		}
+		root := v.rt.Get(segs[0].name)
+		if _, host := asHost(root); !host || len(segs) == 1 {
+			return v.evalLive(segs)
 		}
 	}
 	val, err := v.run(rewriteEmbeds(expr))
@@ -487,11 +511,180 @@ func (v *VM) run(src string) (sobek.Value, error) {
 		return nil, errors.New(firstLine(err.Error()))
 	}
 
+	v.flushClean()
+	v.jsDepth++
+	defer func() { v.jsDepth-- }()
 	val, err := v.rt.RunProgram(prog)
 	if err != nil {
 		return nil, err
 	}
 	return val, nil
+}
+
+func (v *VM) flushClean() {
+	if len(v.clean) == 0 {
+		return
+	}
+	for name := range v.clean {
+		_ = v.rt.Set(name, v.jsValue(v.vars[name]))
+		delete(v.clean, name)
+	}
+}
+
+// Literal parses a string, number, or boolean without starting the runtime.
+func Literal(expr string) (any, bool) {
+	return literal(strings.TrimSpace(expr))
+}
+
+// LiteralList parses a comma-separated list of literals. Anything else is left for JavaScript.
+func LiteralList(src string) ([]any, bool) {
+	parts := splitLiteralArgs(src)
+	if len(parts) == 0 {
+		return nil, false
+	}
+	out := make([]any, len(parts))
+	for i, part := range parts {
+		lit, ok := literal(strings.TrimSpace(part))
+		if !ok {
+			return nil, false
+		}
+		out[i] = lit
+	}
+	return out, true
+}
+
+func literal(expr string) (any, bool) {
+	switch expr {
+	case "true":
+		return true, true
+	case "false":
+		return false, true
+	case "null":
+		return nil, true
+	}
+	if len(expr) >= 2 {
+		q := expr[0]
+		if (q == '\'' || q == '"') && expr[len(expr)-1] == q {
+			if strings.Contains(expr, "${") {
+				return nil, false
+			}
+			s, ok := unquoteLiteral(expr[1:len(expr)-1], q)
+			return s, ok
+		}
+	}
+	return numberLiteral(expr)
+}
+
+func numberLiteral(expr string) (any, bool) {
+	if expr == "" {
+		return nil, false
+	}
+	i := 0
+	if expr[0] == '-' {
+		i++
+	}
+	if i >= len(expr) {
+		return nil, false
+	}
+	if expr[i] == '0' && i+1 < len(expr) && expr[i+1] != '.' {
+		return nil, false
+	}
+	dot := false
+	start := i
+	for ; i < len(expr); i++ {
+		c := expr[i]
+		if c >= '0' && c <= '9' {
+			continue
+		}
+		if c == '.' && !dot {
+			dot = true
+			continue
+		}
+		return nil, false
+	}
+	if i == start || expr[len(expr)-1] == '.' {
+		return nil, false
+	}
+	if !dot {
+		n, err := strconv.ParseInt(expr, 10, 64)
+		if err != nil {
+			return nil, false
+		}
+		return n, true
+	}
+	n, err := strconv.ParseFloat(expr, 64)
+	if err != nil {
+		return nil, false
+	}
+	return n, true
+}
+
+func unquoteLiteral(s string, q byte) (string, bool) {
+	if !strings.Contains(s, `\`) && !strings.ContainsRune(s, rune(q)) {
+		return s, true
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] != '\\' {
+			if s[i] == q {
+				return "", false
+			}
+			b.WriteByte(s[i])
+			continue
+		}
+		if i+1 >= len(s) {
+			return "", false
+		}
+		i++
+		switch s[i] {
+		case '\\', '\'', '"', '/':
+			b.WriteByte(s[i])
+		case 'n':
+			b.WriteByte('\n')
+		case 'r':
+			b.WriteByte('\r')
+		case 't':
+			b.WriteByte('\t')
+		default:
+			return "", false
+		}
+	}
+	return b.String(), true
+}
+
+func splitLiteralArgs(src string) []string {
+	src = strings.TrimSpace(src)
+	if src == "" {
+		return nil
+	}
+	var parts []string
+	start := 0
+	var quote byte
+	for i := 0; i < len(src); i++ {
+		c := src[i]
+		if quote != 0 {
+			if c == '\\' && i+1 < len(src) {
+				i++
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		if c == '\'' || c == '"' {
+			quote = c
+			continue
+		}
+		if c == ',' {
+			parts = append(parts, src[start:i])
+			start = i + 1
+		}
+	}
+	if quote != 0 {
+		return nil
+	}
+	return append(parts, src[start:])
 }
 
 func firstLine(s string) string {

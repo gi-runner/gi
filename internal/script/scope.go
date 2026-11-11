@@ -169,6 +169,7 @@ func (child *VM) adopt(parent *VM) error {
 }
 
 func (parent *VM) copyBindings(child *VM) error {
+	parent.flushClean()
 	for name := range parent.vars {
 		if strings.HasPrefix(name, "__") {
 			continue
