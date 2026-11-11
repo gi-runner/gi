@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">gi</h1>
-<p align="center"><strong>Write API tests once. Run them as functional tests and load tests.</strong><br>Karate for Go. One native binary. No JVM.</p>
+<p align="center"><strong>Turn a spec into one feature file. Run it as a functional test and a load test.</strong><br>Karate for Go. One native binary. No JVM.</p>
 
 <p align="center">
   <a href="https://go.dev/dl/"><img src="https://img.shields.io/badge/Go-1.27.2-00ADD8?logo=go&logoColor=white" alt="Go 1.27.2"></a>
@@ -13,9 +13,9 @@
   <a href="https://pkg.go.dev/github.com/gi-runner/gi"><img src="https://pkg.go.dev/badge/github.com/gi-runner/gi.svg" alt="Go Reference"></a>
 </p>
 
-**[Documentation](https://gi-runner.github.io/gi/)** · [Quick start](https://gi-runner.github.io/gi/quickstart/) · [Examples](examples/)
+**[Documentation](https://gi-runner.github.io/gi/)** · [Specs](https://gi-runner.github.io/gi/spec/) · [Quick start](https://gi-runner.github.io/gi/quickstart/) · [Examples](examples/)
 
-Keep requests, test data and assertions in one feature file. Run it with `gi test` for regression testing, then `gi load` to check the same behavior under load—without maintaining a separate load script. `gi spec` writes that file from a Spec Kit, Kiro, or OpenSpec directory.
+`gi spec` writes one feature file from a Spec Kit, Kiro, or OpenSpec directory. `gi test` runs that file. `gi load` runs the same file under load.
 
 [REST, GraphQL and SOAP](https://gi-runner.github.io/gi/http/) · [Browser automation](https://gi-runner.github.io/gi/browser/) · [WebSocket, gRPC and Kafka](https://gi-runner.github.io/gi/protocols/)
 
@@ -31,6 +31,7 @@ gi demo
 | | **gi** | godog | k6 |
 | --- | --- | --- | --- |
 | Test | one feature file | Go functions | JavaScript |
+| Spec | `gi spec` from the spec directory | write the steps | write the script |
 | Mock | the same file | your own server | your own server |
 | Load | the same file, soak and spike together | no load run | a second script |
 | Try it | `brew install`, then `gi demo` | write the steps | write the script |

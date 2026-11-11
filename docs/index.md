@@ -12,11 +12,11 @@ search:
 <div class="gi-topic-grid" markdown="1">
 
 - [**Your first test**<br>Start a local mock, make a request, and check the response.](quickstart.md)
+- [**Spec-driven development**<br>Turn a Spec Kit, Kiro, or OpenSpec directory into the same feature file.](spec.md)
 - [**JSON assertions**<br>Match complete responses with schemas, predicates, and fuzzy markers.](match.md)
 - [**Reusable flows**<br>Share login, setup, and helpers with feature calls.](suite.md#call)
 - [**Data-driven tests**<br>Run a scenario for each table row or generated input.](data.md#scenario-outline)
 - [**Load thresholds**<br>Set a request rate and fail on latency or errors.](load.md#metrics)
-- [**Spec-driven development**<br>Turn a Spec Kit, Kiro, or OpenSpec directory into the same feature file.](spec.md)
 - [**Tests in CI**<br>Run a tagged suite and keep its reports when a job fails.](automation.md)
 
 </div>
@@ -42,7 +42,7 @@ Install gi and run a working example against a local mock.
 
 Build requests, validate responses, and work with test data.
 
-[Language](language.md) · [Helpers](helpers.md) · [HTTP, GraphQL and SOAP](http.md) · [Assertions](match.md) · [JSON, XML and data](data.md) · [Calls and configuration](suite.md) · [Specs](spec.md)
+[Specs](spec.md) · [Language](language.md) · [Helpers](helpers.md) · [HTTP, GraphQL and SOAP](http.md) · [Assertions](match.md) · [JSON, XML and data](data.md) · [Calls and configuration](suite.md)
 
 
 </section>
