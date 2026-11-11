@@ -19,6 +19,25 @@ Exit status `0` means the run and thresholds passed. A failed assertion or thres
 
 One process uses every core. [`gi load plan`](cli.md) splits that profile across machines, and `gi load merge` judges the combined run. The report stores histograms, not every exchange.
 
+## One machine
+
+These figures are one machine on 11 November 2026, not a universal maximum. The machine was an Apple M4 with 10 cores and 16 GB. gi and a Go echo shared it. The scenario sent `GET /hello`, checked status 200, and matched `response.message == 'Hello, Ada!'`.
+
+```bash
+gi load hello.feature --var baseUrl=http://127.0.0.1:18099 --vus 100 --duration 30s --warmup 3s
+```
+
+| | gi 1.2.1 | k6 2.3.0 |
+| --- | --- | --- |
+| Requests/s | 12,436 | 14,045 |
+| Failures | 0 | 0 |
+| HTTP p95 | 23 ms | 18 ms |
+| Runner | 78 s CPU, 111 MB | |
+
+k6 used 100 constant virtual users for 30 seconds against the same URL, and checked the same status and message.
+
+`--rate 10000 --max-inflight 2000 --duration 30s --warmup 3s` completed 9,794 requests/s and missed 6,098 starts. HTTP p95 was 128 ms. `--rate 2000` for 10 seconds missed nothing, and HTTP p95 was 147 µs.
+
 ## Choose a profile
 
 - **Users (`--vus`):** each virtual user finishes a scenario, then starts it again. A slower service reduces throughput. This is a closed-loop test.

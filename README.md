@@ -29,6 +29,8 @@ gi demo
 
 **65 MB. k6 used 150 MB** for the same local echo.
 
+On an Apple M4, one process held 12,436 requests/s for 30 seconds on a local `GET /hello` with a status check and a match. RSS was 111 MB, and every request passed. k6 2.3.0 held 14,045 requests/s on that echo with the same 100 users.
+
 | | **gi** | godog | k6 |
 | --- | --- | --- | --- |
 | Test | one feature file | Go functions | JavaScript |
