@@ -41,3 +41,7 @@ brews:
 
 changelog:
   use: git
+  filters:
+    exclude:
+      - '^Merge '
+      - '^Bump '
