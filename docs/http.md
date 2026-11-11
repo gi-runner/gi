@@ -23,7 +23,7 @@ Scenario: read a greeting
 gi test http.feature --var baseUrl=http://127.0.0.1:18081 --report http.html
 ```
 
-The request is `GET /hello?language=en`. The mock returns status `200` and a JSON message; both assertions pass. Open `http.html` to inspect the URL, headers, and response.
+The request is `GET /hello?language=en`. The report is `http.html`.
 
 ## Response values
 

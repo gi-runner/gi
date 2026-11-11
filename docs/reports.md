@@ -11,7 +11,7 @@ gi test hello.feature --var baseUrl=http://127.0.0.1:18081 \
   --report report.html --junit junit.xml --json report.json --cucumber cucumber.json
 ```
 
-A passing run exits `0` and writes all four files in the current directory. Open `report.html` locally, upload `junit.xml` to your CI test viewer, or use the JSON formats in other tools. A scenario failure still produces reports and exits `1`.
+A passing run exits `0` and writes all four files in the current directory. A scenario failure still produces reports and exits `1`.
 
 The same flags work on `gi load`. Load HTML adds the latency table, open-loop scheduled latency, missed and late starts, and the thresholds. It does not log every request. Scheduled latency runs from the due time until the HTTP response is recorded. It is not the HTTP percentile.
 

@@ -1,7 +1,5 @@
 # Limits
 
-gi supports API tests, browser automation, messaging, HTTP mocks and load testing. Check these boundaries before choosing it for a project:
-
 | Area | Current limits |
 | --- | --- |
 | Java integration | No `Java.type`, JAR loading or JUnit extensions. Go functions can be registered through the [embedding API](embedding.md). |
@@ -12,5 +10,3 @@ gi supports API tests, browser automation, messaging, HTTP mocks and load testin
 | Async events | Signal/listen queues are local to a run. A separate mock process cannot signal that queue. |
 | Visual/server features | Image comparison and HTML templating/server applications are not implemented. HTTP feature mocks are supported. |
 | Spec files | `gi spec` writes a feature from an acceptance scenario that names one HTTP call, and from an OpenAPI contract. Prose without a call, a required value or credential without an example, and requirements marked as needing clarification, are reported and not executed. |
-
-For supported behavior and examples, see [Data](data.md), [Reuse](suite.md), [HTTP](http.md), [Browser](browser.md) and [Messaging](protocols.md).

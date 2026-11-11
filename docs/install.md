@@ -1,6 +1,6 @@
 # Install
 
-The five-minute path is Homebrew, then `gi demo`.
+Homebrew, then `gi demo`.
 
 ```bash
 brew install gi-runner/tap/gi
@@ -33,8 +33,6 @@ gi version
 gi test --help
 ```
 
-The first command prints `gi` and the installed version. The second lists the functional test options.
-
 ## From a release
 
 Each tagged release publishes archives for Linux, macOS, and Windows on amd64 and arm64 with a `checksums.txt`, and an image at `ghcr.io/gi-runner/gi`. The image holds only the binary, so it runs API, mock, and load tests; browser tests need Chrome on the host.
@@ -60,7 +58,7 @@ go build -o bin/gi ./cmd/gi
 ./bin/gi version
 ```
 
-Once `gi version` works, follow the [quick start](quickstart.md). Multi-line shell examples use Bash; in PowerShell, join the lines and omit each trailing `\`.
+Follow the [quick start](quickstart.md). Multi-line shell examples use Bash; in PowerShell, join the lines and omit each trailing `\`.
 
 `gi check features/` reports JVM-only calls and tags gi cannot run, without executing the files.
 

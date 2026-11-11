@@ -1,7 +1,5 @@
 # Match assertions
 
-Validate JSON, XML and scalar values with schema markers, predicates and structural assertions.
-
 `match` compares two values. The left side is an expression. The right side is an expression, often a JSON document in a docstring. `#(name)` on the right is substituted before the comparison.
 
 ## Try it

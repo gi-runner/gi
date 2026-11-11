@@ -183,7 +183,7 @@ func applyCall(op operation, then, rawPath string) operation {
 	}
 	_, query := splitQuery(rawPath)
 	for _, p := range query {
-		if !hasParam(op.params, p.name) {
+		if !hasParam(op.params, p.in, p.name) {
 			op.params = append(op.params, p)
 		}
 	}
@@ -233,9 +233,13 @@ func ready(op operation) (string, bool) {
 	missing = append(missing, credentialGaps(op)...)
 	if op.bodyRequired && op.bodyExample == nil {
 		switch {
-		case op.body != nil && len(uncovered(*op.body)) > 0:
-			missing = append(missing, uncovered(*op.body)...)
-		case op.body == nil || !bodyCovered(*op.body):
+		case op.body != nil:
+			if gaps := uncovered(*op.body); len(gaps) > 0 {
+				missing = append(missing, gaps...)
+			} else if !bodyCovered(*op.body) {
+				missing = append(missing, "request")
+			}
+		default:
 			missing = append(missing, "request")
 		}
 	}
@@ -388,9 +392,9 @@ func splitQuery(raw string) (string, []parameter) {
 	return path, params
 }
 
-func hasParam(params []parameter, name string) bool {
+func hasParam(params []parameter, in, name string) bool {
 	for _, p := range params {
-		if p.name == name {
+		if p.in == in && p.name == name {
 			return true
 		}
 	}
@@ -473,7 +477,7 @@ func uniqueName(seen map[string]int, name string) string {
 	if seen[name] == 1 {
 		return name
 	}
-	return name + " " + itoa(seen[name])
+	return name + " " + strconv.Itoa(seen[name])
 }
 
 func uniqueSlug(seen map[string]int, slug string) string {
@@ -481,7 +485,7 @@ func uniqueSlug(seen map[string]int, slug string) string {
 	if seen[slug] == 1 {
 		return slug
 	}
-	return slug + "-" + itoa(seen[slug])
+	return slug + "-" + strconv.Itoa(seen[slug])
 }
 
 func credentialGaps(op operation) []string {

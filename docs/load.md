@@ -19,8 +19,6 @@ Exit status `0` means the run and thresholds passed. A failed assertion or thres
 
 ## Choose a profile
 
-Choose what you want to control:
-
 - **Users (`--vus`):** each virtual user finishes a scenario, then starts it again. A slower service reduces throughput. This is a closed-loop test.
 - **Starts per second (`--rate`):** gi schedules scenarios at that rate even when earlier ones are still running. A slower service increases concurrent work. This is an open-loop test.
 

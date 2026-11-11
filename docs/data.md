@@ -15,7 +15,7 @@ The file extension determines the format. Relative paths start at the feature di
 
 ## Inline YAML and CSV
 
-Three double quotes enclose multiline data. The parser converts it to a value you can check with `match`:
+Three double quotes enclose multiline data:
 
 ```gherkin
 * yaml user =

@@ -9,8 +9,6 @@ search:
 
 ## Start here
 
-Jump straight to a working example or a core feature.
-
 <div class="gi-topic-grid" markdown="1">
 
 - [**Your first test**<br>Start a local mock, make a request, and check the response.](quickstart.md)
@@ -18,13 +16,12 @@ Jump straight to a working example or a core feature.
 - [**Reusable flows**<br>Share login, setup, and helpers with feature calls.](suite.md#call)
 - [**Data-driven tests**<br>Run a scenario for each table row or generated input.](data.md#scenario-outline)
 - [**Load thresholds**<br>Set a request rate and fail on latency or errors.](load.md#metrics)
+- [**Spec-driven development**<br>Turn a Spec Kit, Kiro, or OpenSpec directory into the same feature file.](spec.md)
 - [**Tests in CI**<br>Run a tagged suite and keep its reports when a job fails.](automation.md)
 
 </div>
 
 ## Explore the documentation
-
-Browse by section, from your first request to running gi inside Go.
 
 <div class="gi-section-grid" markdown="1">
 

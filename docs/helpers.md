@@ -1,6 +1,6 @@
 # JavaScript helpers
 
-Call helpers on `gi`, for example `gi.map(users, fn)`. `karate` is an alias for `gi`, and `read()` is shorthand for `gi.read()`. Start with [feature files and variables](language.md) if you are new to the syntax.
+Call helpers on `gi`, for example `gi.map(users, fn)`. `karate` is an alias for `gi`, and `read()` is shorthand for `gi.read()`.
 
 | Member | Behavior |
 | --- | --- |

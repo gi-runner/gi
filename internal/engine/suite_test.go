@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync/atomic"
 	"testing"
 
@@ -24,7 +25,7 @@ func TestSuiteConfigCallAndRetry(t *testing.T) {
 	mux.HandleFunc("POST /tick", func(w http.ResponseWriter, r *http.Request) {
 		n := ticks.Add(1)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"n":` + itoa(n) + `}`))
+		_, _ = w.Write([]byte(`{"n":` + strconv.FormatInt(int64(n), 10) + `}`))
 	})
 	mux.HandleFunc("GET /retry", func(w http.ResponseWriter, r *http.Request) {
 		if tries.Add(1) < 3 {
@@ -118,18 +119,4 @@ Scenario: retry until ready
 	if ticks.Load() != 1 {
 		t.Fatalf("callonce hit the server %d times", ticks.Load())
 	}
-}
-
-func itoa(n int32) string {
-	if n == 0 {
-		return "0"
-	}
-	var b [12]byte
-	i := len(b)
-	for n > 0 {
-		i--
-		b[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(b[i:])
 }

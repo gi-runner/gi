@@ -1,6 +1,6 @@
 # Reuse and configuration
 
-Call another feature to reuse a flow, load shared settings from config, and use tags to choose what runs. Start with this two-file example; then add the options your suite needs.
+Call another feature to reuse a flow, load shared settings from config, and use tags to choose what runs.
 
 ## Try a reusable feature
 

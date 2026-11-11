@@ -5,7 +5,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -32,9 +32,9 @@ type secScheme struct {
 }
 
 type parameter struct {
-	name, in, kind string
-	required       bool
-	example        any
+	name, in string
+	required bool
+	example  any
 }
 
 type resp struct {
@@ -134,11 +134,11 @@ func readContracts(dir string) ([]operation, error) {
 			ops = append(ops, op)
 		}
 	}
-	sort.Slice(ops, func(i, j int) bool {
-		if ops[i].path == ops[j].path {
-			return ops[i].method < ops[j].method
+	slices.SortFunc(ops, func(a, b operation) int {
+		if c := strings.Compare(a.path, b.path); c != 0 {
+			return c
 		}
-		return ops[i].path < ops[j].path
+		return strings.Compare(a.method, b.method)
 	})
 	return ops, nil
 }
@@ -155,7 +155,7 @@ func contractPaths(dir string) ([]string, error) {
 	entries, err := os.ReadDir(contracts)
 	if err != nil {
 		if os.IsNotExist(err) {
-			sort.Strings(paths)
+			slices.Sort(paths)
 			return paths, nil
 		}
 		return nil, err
@@ -169,7 +169,7 @@ func contractPaths(dir string) ([]string, error) {
 			paths = append(paths, filepath.Join(contracts, entry.Name()))
 		}
 	}
-	sort.Strings(paths)
+	slices.Sort(paths)
 	return paths, nil
 }
 
@@ -215,7 +215,7 @@ func decodeSecurity(node yaml.Node) ([][]string, bool) {
 		for name := range alt {
 			names = append(names, name)
 		}
-		sort.Strings(names)
+		slices.Sort(names)
 		out = append(out, names)
 	}
 	return out, true
@@ -273,7 +273,6 @@ func (c contract) param(p oasParam) parameter {
 	out := parameter{name: p.Name, in: p.In, required: p.Required || p.In == "path", example: p.Example}
 	if p.Schema != nil {
 		concrete := c.concrete(*p.Schema)
-		out.kind = concrete.Type
 		if out.example == nil {
 			out.example = concrete.Example
 		}
@@ -339,12 +338,17 @@ func jsonMedia(content map[string]oasMedia) (oasMedia, bool) {
 	if media, ok := content["application/json"]; ok {
 		return media, true
 	}
-	for kind, media := range content {
+	var kinds []string
+	for kind := range content {
 		if strings.Contains(kind, "json") {
-			return media, true
+			kinds = append(kinds, kind)
 		}
 	}
-	return oasMedia{}, false
+	if len(kinds) == 0 {
+		return oasMedia{}, false
+	}
+	slices.Sort(kinds)
+	return content[kinds[0]], true
 }
 
 func decodeResponses(node yaml.Node) map[string]oasMedia {

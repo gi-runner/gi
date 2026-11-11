@@ -2,6 +2,7 @@ package spec
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -37,6 +38,7 @@ var (
 	reqHeadRE   = regexp.MustCompile(`(?i)^###\s+Requirement:\s+(.+)$`)
 	sceneHeadRE = regexp.MustCompile(`(?i)^####\s+Scenario:\s+(.+)$`)
 	gwtRE       = regexp.MustCompile(`(?i)^[-*]\s+(GIVEN|WHEN|THEN)\s+(.*)$`)
+	sceneWordRE = regexp.MustCompile(`(?i)(?:^|[\s,.;])(given|when|then)\b`)
 	shallRE     = regexp.MustCompile(`(?i)^WHEN\s+(.+?)\s+THE SYSTEM SHALL\s+(.+)$`)
 	numRE       = regexp.MustCompile(`^\d+\.\s+(.*)$`)
 	linkRE      = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
@@ -75,7 +77,7 @@ func parseSpecKit(text string) doc {
 		if line == "" {
 			continue
 		}
-		if title, ok := strings.CutPrefix(line, "# "); ok && d.title == "" && !strings.HasPrefix(line, "##") {
+		if title, ok := strings.CutPrefix(line, "# "); ok && d.title == "" {
 			d.title = strings.TrimSpace(strings.TrimPrefix(title, "Feature Specification:"))
 		}
 		if id, title, ok := storyHead(line); ok {
@@ -150,14 +152,14 @@ func parseKiro(text string) doc {
 			flush()
 			continue
 		}
-		if title, ok := strings.CutPrefix(line, "# "); ok && d.title == "" && !strings.HasPrefix(line, "##") {
+		if title, ok := strings.CutPrefix(line, "# "); ok && d.title == "" {
 			d.title = strings.TrimSpace(title)
 			continue
 		}
 		if strings.HasPrefix(line, "#") {
 			flush()
 			title := strings.TrimSpace(strings.TrimLeft(line, "#"))
-			d.stories = append(d.stories, story{id: "US" + itoa(len(d.stories)+1), title: title})
+			d.stories = append(d.stories, story{id: "US" + strconv.Itoa(len(d.stories)+1), title: title})
 			current = &d.stories[len(d.stories)-1]
 			continue
 		}
@@ -190,11 +192,11 @@ func parseOpenSpec(text string) doc {
 		if line == "" {
 			continue
 		}
-		if title, ok := strings.CutPrefix(line, "# "); ok && d.title == "" && !strings.HasPrefix(line, "##") {
+		if title, ok := strings.CutPrefix(line, "# "); ok && d.title == "" {
 			d.title = strings.TrimSpace(title)
 		}
 		if m := reqHeadRE.FindStringSubmatch(line); m != nil {
-			d.stories = append(d.stories, story{id: "US" + itoa(len(d.stories)+1), title: strings.TrimSpace(m[1])})
+			d.stories = append(d.stories, story{id: "US" + strconv.Itoa(len(d.stories)+1), title: strings.TrimSpace(m[1])})
 			current = &d.stories[len(d.stories)-1]
 			sc = nil
 			continue
@@ -249,34 +251,24 @@ func acceptance(line string) (scene, bool) {
 }
 
 func splitScene(text string) (scene, bool) {
-	kind := map[string]int{}
 	var marks []struct {
 		at   int
 		word string
 	}
-	for _, word := range []string{"given", "when", "then"} {
-		re := regexp.MustCompile(`(?i)(?:^|[\s,.;])(` + word + `)\b`)
-		if loc := re.FindStringSubmatchIndex(text); loc != nil {
-			marks = append(marks, struct {
-				at   int
-				word string
-			}{loc[2], strings.ToLower(text[loc[2]:loc[3]])})
-			kind[word] = loc[2]
+	seen := map[string]bool{}
+	for _, loc := range sceneWordRE.FindAllStringSubmatchIndex(text, -1) {
+		word := strings.ToLower(text[loc[2]:loc[3]])
+		if seen[word] {
+			continue
 		}
+		seen[word] = true
+		marks = append(marks, struct {
+			at   int
+			word string
+		}{loc[2], word})
 	}
-	if _, ok := kind["when"]; !ok {
+	if !seen["when"] || !seen["then"] {
 		return scene{}, false
-	}
-	if _, ok := kind["then"]; !ok {
-		return scene{}, false
-	}
-	// given, when, then appear in source order after the scan above; sort by index.
-	for i := 1; i < len(marks); i++ {
-		j := i
-		for j > 0 && marks[j].at < marks[j-1].at {
-			marks[j], marks[j-1] = marks[j-1], marks[j]
-			j--
-		}
 	}
 	var sc scene
 	for i, mark := range marks {
@@ -316,18 +308,4 @@ func stripMd(s string) string {
 
 func clarifies(text string) bool {
 	return strings.Contains(strings.ToUpper(text), "NEEDS CLARIFICATION")
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b [8]byte
-	i := len(b)
-	for n > 0 {
-		i--
-		b[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(b[i:])
 }
