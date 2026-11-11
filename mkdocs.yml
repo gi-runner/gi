@@ -2,7 +2,7 @@ site_name: gi
 site_url: https://gi-runner.github.io/gi/
 repo_url: https://github.com/gi-runner/gi
 repo_name: gi-runner/gi
-site_description: A spec becomes one feature file for tests, mocks, and load. One static binary. No JVM.
+site_description: One feature file for tests, mocks, and load. gi spec writes it from a spec directory. One static binary. No JVM.
 copyright: Copyright 2026 gi-runner. Apache License 2.0.
 docs_dir: docs
 site_dir: site
