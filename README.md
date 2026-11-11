@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">gi</h1>
-<p align="center"><strong>Turn a spec into one feature file. Run it as a functional test and a load test.</strong><br>Karate for Go. One native binary. No JVM.</p>
+<p align="center"><strong>Write API tests once. Run them as functional tests and load tests.</strong><br>Karate for Go. One native binary. No JVM.</p>
 
 <p align="center">
   <a href="https://go.dev/dl/"><img src="https://img.shields.io/badge/Go-1.27.2-00ADD8?logo=go&logoColor=white" alt="Go 1.27.2"></a>
@@ -15,7 +15,7 @@
 
 **[Documentation](https://gi-runner.github.io/gi/)** · [Specs](https://gi-runner.github.io/gi/spec/) · [Quick start](https://gi-runner.github.io/gi/quickstart/) · [Examples](examples/)
 
-`gi spec` writes one feature file from a Spec Kit, Kiro, or OpenSpec directory. `gi test` runs that file. `gi load` runs the same file under load.
+One feature file holds the requests, test data, and assertions. `gi test` runs it. `gi load` runs the same file. `gi spec` writes that file from a Spec Kit, Kiro, or OpenSpec directory.
 
 [REST, GraphQL and SOAP](https://gi-runner.github.io/gi/http/) · [Browser automation](https://gi-runner.github.io/gi/browser/) · [WebSocket, gRPC and Kafka](https://gi-runner.github.io/gi/protocols/)
 
