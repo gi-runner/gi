@@ -3,6 +3,7 @@
 | Area | Current limits |
 | --- | --- |
 | Java integration | No `Java.type`, JAR loading or JUnit extensions. Go functions can be registered through the [embedding API](embedding.md). |
+| Scenario state | Each scenario has its own variables and cookie jar. Scenarios can share the HTTP transport. |
 | XML and JSONPath | XML's JavaScript view is read-only; use XPath set/remove or path/value tables. Jayway-specific JSONPath functions are not implemented. |
 | Browser | Chrome is required. Frames, dialogs, extra windows, request interception, and file uploads are supported. A frame must be same-origin. Providers, a full browser cookie jar, and the full fluent retry API are not implemented. |
 | Service schemas | gRPC requires server reflection or a descriptor file containing the service. |
