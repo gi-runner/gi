@@ -11,5 +11,6 @@ gi supports API tests, browser automation, messaging, HTTP mocks and load testin
 | Authentication | OAuth2 supports client credentials, the password grant, and refresh tokens. NTLM and Java keystores are not implemented; certificates use PEM. |
 | Async events | Signal/listen queues are local to a run. A separate mock process cannot signal that queue. |
 | Visual/server features | Image comparison and HTML templating/server applications are not implemented. HTTP feature mocks are supported. |
+| Spec files | `gi spec` writes a feature from an acceptance scenario that names one HTTP call, and from an OpenAPI contract. Prose without a call, a required value or credential without an example, and requirements marked as needing clarification, are reported and not executed. |
 
 For supported behavior and examples, see [Data](data.md), [Reuse](suite.md), [HTTP](http.md), [Browser](browser.md) and [Messaging](protocols.md).

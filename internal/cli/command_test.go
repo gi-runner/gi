@@ -255,6 +255,58 @@ func TestCommandHelpVersionAndUsage(t *testing.T) {
 	}
 }
 
+func TestSpecJSON(t *testing.T) {
+	dir := t.TempDir()
+	writeSpec(t, dir, `
+### User Story 1 - Health (Priority: P1)
+
+**Acceptance Scenarios**:
+
+1. **Given** the service, **When** GET /health, **Then** status 200
+`, `
+openapi: 3.0.3
+paths:
+  /health:
+    get:
+      responses:
+        '200': { description: ok }
+`)
+	code, out := runCLI(t, "spec", "--json", dir)
+	if code != 0 || !strings.Contains(out, `"scenarios": 1`) || !strings.Contains(out, `"notes"`) {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+
+	missing := t.TempDir()
+	writeSpec(t, missing, `
+### User Story 1 - Reminder (Priority: P1)
+
+**Acceptance Scenarios**:
+
+1. **Given** an invoice, **When** POST /invoices/{id}/reminders, **Then** status 201
+`, `
+openapi: 3.0.3
+paths:
+  /invoices/{id}/reminders:
+    post:
+      responses:
+        '201': { description: Created }
+`)
+	code, out = runCLI(t, "spec", "--json", missing)
+	if code != 1 || !strings.Contains(out, `"files": []`) || !strings.Contains(out, "add example for id") {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+}
+
+func writeSpec(t *testing.T, dir, spec, contract string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, "spec.md"), []byte(spec), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "openapi.yaml"), []byte(contract), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCommandRepeatedVariablesAndTerminator(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "run.feature")

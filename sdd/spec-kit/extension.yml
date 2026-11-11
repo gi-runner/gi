@@ -1,0 +1,33 @@
+schema_version: "1.0"
+
+extension:
+  id: gi
+  name: gi
+  version: 0.1.0
+  description: Compile a Spec Kit directory into gi features and run them
+  author: gi-runner
+  repository: https://github.com/gi-runner/gi
+  license: Apache-2.0
+  homepage: https://gi-runner.github.io/gi/spec/
+
+requires:
+  speckit_version: ">=0.1.0"
+  tools:
+    - name: gi
+      required: true
+
+provides:
+  commands:
+    - name: speckit.gi.spec
+      file: commands/spec.md
+      description: Compile the spec into gi features, then check and run them
+
+hooks:
+  after_plan:
+    command: speckit.gi.spec
+    optional: false
+    description: Compile the spec into gi features and run them
+
+tags:
+  - testing
+  - openapi
