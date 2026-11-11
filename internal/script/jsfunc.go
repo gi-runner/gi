@@ -229,6 +229,7 @@ func (v *VM) install(env *functionEnv) func() {
 // Seal captures callable and null bindings along with data, retaining their
 // native values so sibling functions and object identity survive scope restore.
 func (v *VM) Seal(val any) any {
+	v.flushClean()
 	env := &functionEnv{values: make(map[string]sobek.Value)}
 	for name := range v.vars {
 		if strings.HasPrefix(name, "__") || !parser.IsIdentifier(name) {
