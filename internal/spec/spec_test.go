@@ -656,11 +656,11 @@ func TestAgentCommandsNameTheLoop(t *testing.T) {
 			t.Fatalf("%s missing the loop", path)
 		}
 	}
-	kiro := readFile(t, filepath.Join(root, "kiro", "gi.md"))
+	kiro := strings.ReplaceAll(readFile(t, filepath.Join(root, "kiro", "gi.md")), "\r\n", "\n")
 	if !strings.HasPrefix(kiro, "---\n") || !strings.Contains(kiro, "inclusion: auto") || !strings.Contains(kiro, "name: gi") {
 		t.Fatalf("kiro steering:\n%s", kiro)
 	}
-	skill := readFile(t, filepath.Join(root, "openspec", "gi", "SKILL.md"))
+	skill := strings.ReplaceAll(readFile(t, filepath.Join(root, "openspec", "gi", "SKILL.md")), "\r\n", "\n")
 	if !strings.HasPrefix(skill, "---\n") || !strings.Contains(skill, "name: openspec-gi") {
 		t.Fatalf("openspec skill:\n%s", skill)
 	}
