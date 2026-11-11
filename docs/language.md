@@ -1,6 +1,6 @@
 # Feature files and variables
 
-A `.feature` file contains named tests. gi reads each test's steps from top to bottom. You can write API requests, assertions, and JavaScript expressions in the same file; no Java or Go test code is required.
+A `.feature` file contains named tests. gi reads each test's steps from top to bottom.
 
 ## Read a feature file
 
@@ -18,7 +18,7 @@ Scenario: check a user
   * assert user.age >= minimumAge
 ```
 
-The scenario passes. Here's what each part means:
+The scenario passes.
 
 | Part | Meaning |
 | --- | --- |
@@ -30,7 +30,7 @@ The scenario passes. Here's what each part means:
 | `match` | Compares values; see [assertions](match.md). |
 | `assert` | Requires a JavaScript expression to be `true`. |
 
-These headings come from Gherkin, the text format also used by Cucumber. You do not need to know Cucumber to use gi.
+These headings come from Gherkin.
 
 ## Variables and expressions
 

@@ -15,12 +15,10 @@ import (
 	"github.com/grafana/sobek"
 )
 
-// Helpers use the scenario's JS values directly so callbacks and mutations retain
-// JavaScript semantics instead of round-tripping through exported Go functions.
-//
 //go:embed helpers.js
 var helpers string
 
+// Helpers stay in JavaScript so callbacks mutate scenario values in place.
 var helperProgram = mustCompileHelpers()
 
 var builtins = sync.OnceValue(func() map[string]bool {

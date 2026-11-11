@@ -35,7 +35,7 @@ func newCommand(code *int) *cobra.Command {
 	root.SetErr(os.Stderr)
 	root.SetVersionTemplate("gi {{.Version}}\n")
 	root.Flags().BoolP("version", "v", false, "Print version")
-	root.AddCommand(newTestCommand(code), newLoadCommand(code), newMockCommand(code), newCheckCommand(code), newDemoCommand(code), newInitCommand(code))
+	root.AddCommand(newTestCommand(code), newLoadCommand(code), newMockCommand(code), newCheckCommand(code), newSpecCommand(code), newDemoCommand(code), newInitCommand(code))
 	root.AddCommand(&cobra.Command{
 		Use: "version", Short: "Print version", Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, _ []string) { cmd.Println("gi", version) },

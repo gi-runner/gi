@@ -1,6 +1,6 @@
 # CI and automation
 
-Run your feature files in CI and keep the reports even when a test fails. The example below needs a reachable API; the workflow does not start it.
+The example needs a reachable API. The workflow does not start it. Reports are uploaded when the test fails.
 
 ## GitHub Actions
 

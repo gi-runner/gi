@@ -15,7 +15,7 @@
 
 **[Documentation](https://gi-runner.github.io/gi/)** · [Quick start](https://gi-runner.github.io/gi/quickstart/) · [Examples](examples/)
 
-Keep requests, test data and assertions in one feature file. Run it with `gi test` for regression testing, then `gi load` to check the same behavior under load—without maintaining a separate load script.
+Keep requests, test data and assertions in one feature file. Run it with `gi test` for regression testing, then `gi load` to check the same behavior under load—without maintaining a separate load script. `gi spec` writes that file from a Spec Kit, Kiro, or OpenSpec directory.
 
 [REST, GraphQL and SOAP](https://gi-runner.github.io/gi/http/) · [Browser automation](https://gi-runner.github.io/gi/browser/) · [WebSocket, gRPC and Kafka](https://gi-runner.github.io/gi/protocols/)
 

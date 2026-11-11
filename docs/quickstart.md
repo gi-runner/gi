@@ -1,6 +1,6 @@
 # Your first test
 
-One feature file is a functional test and a load test. Prove that before writing a file:
+One feature file is a functional test and a load test.
 
 ```bash
 gi demo
@@ -59,9 +59,7 @@ In another terminal, run:
 gi test hello.feature --var baseUrl=http://127.0.0.1:18081 --report report.html
 ```
 
-The command exits with status `0` and marks `get a greeting` as passed. It writes `report.html` in your current directory.
-
-Open `report.html` to inspect the steps and HTTP exchange. Change the expected message and run again to see a match failure.
+The command exits with status `0` and writes `report.html` in the current directory.
 
 ## Run under load
 

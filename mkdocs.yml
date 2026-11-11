@@ -57,6 +57,7 @@ nav:
       - Assertions: match.md
       - Data-driven tests: data.md
       - Reuse and configuration: suite.md
+      - Specs: spec.md
   - Run tests:
       - Command line: cli.md
       - Reports: reports.md

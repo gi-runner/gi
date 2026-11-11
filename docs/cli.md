@@ -5,6 +5,7 @@ gi test [files or directories] [flags]
 gi load [files or directories] [flags]
 gi load merge <snapshots> [flags]
 gi mock <file.feature> [flags]
+gi spec [spec directory]
 gi check [files or directories]
 gi demo
 gi init
@@ -73,6 +74,10 @@ Flags may follow the file path. Use `--` before paths beginning with `-`. `gi te
 | Flag | Meaning |
 | --- | --- |
 | `--addr :18080` | Listen address. |
+
+## spec
+
+`gi spec specs/001-payment` reads `spec.md` or `requirements.md`, plus `openapi.yaml` or `contracts/*.yaml`, and writes `features/*.feature`. `--json` prints the files and notes. `--out` sets the feature directory. Spec Kit, Kiro, and OpenSpec use the same command. Run `gi check` on that directory, then `gi test` with `--var baseUrl=...`. See [Specs](spec.md).
 
 ## check
 
