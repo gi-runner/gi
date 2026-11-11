@@ -5,9 +5,9 @@
 
 .md-header__button.md-logo img,
 .md-nav__button.md-logo img {
-  width: 2rem;
-  height: 2rem;
-  border-radius: 22%;
+  width: auto;
+  height: 2.2rem;
+  border-radius: 0;
 }
 
 .md-nav__title .md-nav__button.md-logo {
