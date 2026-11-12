@@ -17,7 +17,7 @@ The runner schedules 20 scenario starts per second for five seconds. On a termin
 
 Exit status `0` means the run and thresholds passed. A failed assertion or threshold exits `1`. Invalid profile options exit `2`.
 
-One process uses every core. [`gi load plan`](cli.md) splits that profile across machines, and `gi load merge` judges the combined run. The report stores histograms, not every exchange.
+One process uses every core. [`gi load plan`](cli.md) splits that profile across machines, and `gi load merge` judges the combined run. The report stores histograms, not every exchange. Up to eight failed scenarios keep the failed step and the last request and response.
 
 ## One machine
 
@@ -36,7 +36,18 @@ gi load hello.feature --var baseUrl=http://127.0.0.1:18099 --vus 100 --duration 
 
 k6 used 100 constant virtual users for 30 seconds against the same URL, and checked the same status and message.
 
-`--rate 10000 --max-inflight 2000 --duration 30s --warmup 3s` completed 9,794 requests/s and missed 6,098 starts. HTTP p95 was 128 ms. `--rate 2000` for 10 seconds missed nothing, and HTTP p95 was 147 µs.
+gi 1.2.1 on that echo, `--rate 10000 --max-inflight 2000 --duration 30s --warmup 3s`, completed 9,794 requests/s and missed 6,098 starts. HTTP p95 was 128 ms. `--rate 2000` for 10 seconds missed nothing, and HTTP p95 was 147 µs.
+
+Same machine, a catalog `GET` checked status 200 and `total == 3`. Ten users, 10 seconds:
+
+| | gi | k6 2.3.0 |
+| --- | --- | --- |
+| Requests/s | 35,160 | 26,064 |
+| Failures | 0 | 0 |
+| HTTP p95 | 451 µs | 613 µs |
+| RSS | 55 MB | 137 MB |
+
+`--rate 10000 --max-inflight 2000 --duration 10s --warmup 2s` on that catalog held 10,000 starts/s and missed none. HTTP p95 was 176 µs and RSS was 134 MB. 350 starts were more than 20 ms late. `--rate 2000` for 5 seconds missed none.
 
 ## Choose a profile
 

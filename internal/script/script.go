@@ -46,6 +46,7 @@ type VM struct {
 	retryUntil  string
 	clean       map[string]bool // Go value is current until JavaScript runs
 	jsDepth     int
+	Hold        any // caller state reused across iterations of this runtime
 }
 
 func New() *VM {

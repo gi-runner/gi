@@ -52,3 +52,33 @@ func TestScenarioLocksAreCancellableAndExclusive(t *testing.T) {
 		release()
 	})
 }
+
+func TestSuiteWithoutLocksDoesNotSerialize(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var s Suite
+		s.UseLocks(false)
+		first, err := s.Acquire(t.Context(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		second, err := s.Acquire(t.Context(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		first()
+		second()
+		held, err := s.Acquire(t.Context(), []string{"@lock=*"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
+		defer cancel()
+		if release, err := s.Acquire(ctx, nil); !errors.Is(err, context.DeadlineExceeded) {
+			if release != nil {
+				release()
+			}
+			t.Fatalf("exclusive lock did not hold: %v", err)
+		}
+		held()
+	})
+}

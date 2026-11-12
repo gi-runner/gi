@@ -13,9 +13,11 @@ import (
 	"github.com/gi-runner/gi/internal/engine"
 )
 
+const responseScratch = 4096
+
 var responseBufPool = sync.Pool{
 	New: func() any {
-		return new([32768]byte)
+		return new([responseScratch]byte)
 	},
 }
 
@@ -100,7 +102,7 @@ func (c *client) Send(ctx context.Context, call engine.Call) (engine.Reply, erro
 
 // A reply owns its bytes; only temporary read storage can be reused.
 func readResponse(body io.Reader, limit int64) ([]byte, error) {
-	scratch := responseBufPool.Get().(*[32768]byte) //nolint:forcetypeassert // This private pool stores only fixed-size response scratch arrays.
+	scratch := responseBufPool.Get().(*[responseScratch]byte) //nolint:forcetypeassert // This private pool stores only fixed-size response scratch arrays.
 	defer responseBufPool.Put(scratch)
 	reader := io.LimitReader(body, limit+1)
 	n, err := io.ReadFull(reader, scratch[:])

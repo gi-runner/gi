@@ -163,13 +163,16 @@ func Run(ctx context.Context, f *feature.File, cfg Config) (Result, error) {
 		th:       thresholds,
 		stop:     stop,
 		tokens:   cfg.Tokens,
+		runCtx:   runCtx,
 	}
+	defer s.stopPool()
 	if s.tokens == nil {
 		s.tokens = &engine.TokenCache{}
 	}
 	if s.mix, err = newMix(f, engine.Options{LoadMode: true, Tag: cfg.Tag, Env: cfg.Env}); err != nil {
 		return Result{}, err
 	}
+	engine.NoteLocks(cfg.Suite, f)
 	s.initMetrics()
 	if cfg.RPS > 0 {
 		s.limiter = newBucket(cfg.RPS)
@@ -219,6 +222,10 @@ type session struct {
 	endpoints  endpointNames
 	metricSeed maphash.Seed
 	userPeak   [timelineSlots]atomic.Uint64
+	runCtx     context.Context //nolint:containedctx // pool runtimes stay leased for the load run
+	poolMu     sync.Mutex
+	idle       []*script.VM
+	watches    []func()
 }
 
 type userSlot struct {
@@ -336,10 +343,55 @@ func (s *session) runOpen(runCtx context.Context) {
 				defer s.inflight.Add(-1)
 			}
 			lu := &s.collectors[(id-1)%len(s.collectors)]
-			s.once(runCtx, runCtx, lu, due, id, 1, nil)
+			vm, put := s.borrowVM()
+			defer put()
+			s.once(runCtx, runCtx, lu, due, id, 1, vm)
 		})
 	}
 	wg.Wait()
+}
+
+func (s *session) borrowVM() (*script.VM, func()) {
+	s.poolMu.Lock()
+	if n := len(s.idle); n > 0 {
+		vm := s.idle[n-1]
+		s.idle = s.idle[:n-1]
+		s.poolMu.Unlock()
+		return vm, func() { s.recycle(vm) }
+	}
+	s.poolMu.Unlock()
+	if s.runCtx == nil {
+		return nil, func() {}
+	}
+	vm := script.New()
+	release, err := vm.Watch(s.runCtx)
+	if err != nil {
+		return nil, func() {}
+	}
+	s.poolMu.Lock()
+	s.watches = append(s.watches, release)
+	s.poolMu.Unlock()
+	return vm, func() { s.recycle(vm) }
+}
+
+func (s *session) recycle(vm *script.VM) {
+	if vm == nil {
+		return
+	}
+	s.poolMu.Lock()
+	s.idle = append(s.idle, vm)
+	s.poolMu.Unlock()
+}
+
+func (s *session) stopPool() {
+	s.poolMu.Lock()
+	watches := s.watches
+	s.watches = nil
+	s.idle = nil
+	s.poolMu.Unlock()
+	for _, release := range watches {
+		release()
+	}
 }
 
 func (s *session) reserve() bool {

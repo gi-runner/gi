@@ -4,6 +4,13 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"sync/atomic"
+)
+
+const (
+	locksUnknown uint32 = iota
+	locksNone
+	locksUsed
 )
 
 // scenarioLocks grants a scenario's complete lock set atomically. Context-owned
@@ -15,23 +22,32 @@ type scenarioLocks struct {
 	active    int
 	exclusive bool
 	writers   int
+	mode      atomic.Uint32
+}
+
+// UseLocks records whether any scenario on this suite carries @lock.
+// Pass false only before scenarios start. A later true sticks.
+func (s *Suite) UseLocks(used bool) {
+	if s == nil {
+		return
+	}
+	if used {
+		s.locks.mode.Store(locksUsed)
+		return
+	}
+	s.locks.mode.CompareAndSwap(locksUnknown, locksNone)
 }
 
 func (s *Suite) Acquire(ctx context.Context, tags []string) (func(), error) {
-	names := make(map[string]bool)
-	exclusive := false
-	for _, tag := range tags {
-		if raw, ok := strings.CutPrefix(strings.TrimPrefix(tag, "@"), "lock="); ok {
-			for name := range strings.SplitSeq(raw, ",") {
-				name = strings.TrimSpace(name)
-				if name != "" {
-					names[name] = true
-				}
-				if name == "*" {
-					exclusive = true
-				}
-			}
+	names, exclusive := lockNames(tags)
+	if s.locks.mode.Load() == locksNone && names == nil && !exclusive {
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
+		return func() {}, nil
+	}
+	if names != nil || exclusive {
+		s.locks.mode.Store(locksUsed)
 	}
 	l := &s.locks
 	l.mu.Lock()
@@ -99,3 +115,29 @@ func (s *Suite) Acquire(ctx context.Context, tags []string) (func(), error) {
 }
 
 func (l *scenarioLocks) notify() { close(l.changed); l.changed = make(chan struct{}) }
+
+func lockNames(tags []string) (map[string]bool, bool) {
+	var names map[string]bool
+	exclusive := false
+	for _, tag := range tags {
+		raw, ok := strings.CutPrefix(strings.TrimPrefix(tag, "@"), "lock=")
+		if !ok {
+			continue
+		}
+		for name := range strings.SplitSeq(raw, ",") {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			if name == "*" {
+				exclusive = true
+				continue
+			}
+			if names == nil {
+				names = map[string]bool{}
+			}
+			names[name] = true
+		}
+	}
+	return names, exclusive
+}

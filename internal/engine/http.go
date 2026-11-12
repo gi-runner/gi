@@ -59,14 +59,9 @@ func (e *exec) method(ctx context.Context, name string, sr *StepResult) error {
 	if e.opt.HTTP == nil {
 		return errors.New("http sender is not set")
 	}
-	full, err := buildURL(e.sess.baseURL, e.sess.paths, e.sess.params)
+	full, err := e.resolveURL(method)
 	if err != nil {
 		return err
-	}
-	if (method == "GET" || method == "HEAD") && len(e.sess.form) > 0 {
-		if full, err = addQuery(full, e.sess.form); err != nil {
-			return err
-		}
 	}
 	body, ctype, err := e.takeBody(method)
 	if err != nil {
@@ -95,29 +90,19 @@ func (e *exec) method(ctx context.Context, name string, sr *StepResult) error {
 		if err != nil {
 			return err
 		}
-		reqCtx, cancel := context.WithTimeout(ctx, e.sess.timeout)
+		reqCtx, cancel := e.requestContext(ctx)
 		requestStart := time.Now()
 		reply, err := e.opt.HTTP.Send(reqCtx, Call{
 			Method: method, URL: full, Header: headers, Cookies: e.sess.cookies, Jar: e.sess.jar,
 			Body: body, Follow: e.sess.follow, Transport: e.sess.transport,
 		})
 		cancel()
-		e.sess.prev = map[string]any{"method": method, "url": full, "headers": headerAny(headers), "body": body}
-		exch := &Exchange{
-			Started: requestStart, Method: method, URL: full, Status: reply.Status, Duration: reply.Duration,
-			RequestHeaders: e.sess.out.headers(headers), RequestBody: e.sess.out.body(body),
-			Endpoint: callName(callFile(e), sr.Line, method, full),
-		}
-		sr.HTTP = exch
+		e.notePrev(method, full, headers, body)
+		e.recordExchange(sr, method, full, requestStart, headers, body, reply, err)
 		if err != nil {
-			exch.Error = err.Error()
-			e.observe(exch)
 			last = fmt.Errorf("request failed: %w", err)
 			continue
 		}
-		exch.ResponseHeaders = e.sess.out.headers(reply.Header)
-		exch.ResponseBody = e.sess.out.body(reply.Body)
-		e.observe(exch)
 		if err := e.keepResponse(reply, full); err != nil {
 			return err
 		}
@@ -134,6 +119,185 @@ func (e *exec) method(ctx context.Context, name string, sr *StepResult) error {
 		return fmt.Errorf("retry until not satisfied: %s", until)
 	}
 	return last
+}
+
+func (e *exec) resolveURL(method string) (string, error) {
+	p := e.prep()
+	form := ""
+	if (method == "GET" || method == "HEAD") && len(e.sess.form) > 0 {
+		form = e.sess.form.Encode()
+	}
+	if p != nil && p.url != "" && p.method == method && p.base == e.sess.baseURL && p.form == form && sameStrings(p.paths, e.sess.paths) && sameValues(p.params, e.sess.params) {
+		return p.url, nil
+	}
+	full, err := buildURL(e.sess.baseURL, e.sess.paths, e.sess.params)
+	if err != nil {
+		return "", err
+	}
+	if form != "" {
+		if full, err = addQuery(full, e.sess.form); err != nil {
+			return "", err
+		}
+	}
+	if p != nil {
+		p.method = method
+		p.base = e.sess.baseURL
+		p.form = form
+		p.paths = append(p.paths[:0], e.sess.paths...)
+		p.params = cloneValues(e.sess.params)
+		p.url = full
+	}
+	return full, nil
+}
+
+func (e *exec) prep() *requestPrep {
+	if e.vm == nil || e.opt.Worker == nil || !e.opt.LoadMode || e.opt.Depth != 0 {
+		return nil
+	}
+	if p, ok := e.vm.Hold.(*requestPrep); ok {
+		return p
+	}
+	p := &requestPrep{}
+	e.vm.Hold = p
+	return p
+}
+
+func (e *exec) notePrev(method, full string, headers map[string][]string, body []byte) {
+	if p := e.prep(); p != nil && e.headersReused && p.prev != nil && p.prevURL == full && p.prevMethod == method {
+		p.prev["body"] = body
+		e.sess.prev = p.prev
+		return
+	}
+	prev := map[string]any{"method": method, "url": full, "headers": headerAny(headers), "body": body}
+	e.sess.prev = prev
+	if p := e.prep(); p != nil {
+		p.prev = prev
+		p.prevURL = full
+		p.prevMethod = method
+	}
+}
+
+type requestPrep struct {
+	method, base, form, url string
+	paths                   []string
+	params                  url.Values
+	headersReady            bool
+	ctype, charset, auth    string
+	hasBody                 bool
+	srcHeaders              map[string][]string
+	headers                 map[string][]string
+	prev                    map[string]any
+	prevURL, prevMethod     string
+}
+
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func sameValues(a, b url.Values) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, av := range a {
+		bv := b[k]
+		if len(av) != len(bv) {
+			return false
+		}
+		for i := range av {
+			if av[i] != bv[i] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func cloneValues(v url.Values) url.Values {
+	if len(v) == 0 {
+		return nil
+	}
+	out := make(url.Values, len(v))
+	for k, vs := range v {
+		out[k] = append([]string(nil), vs...)
+	}
+	return out
+}
+
+func sameHeader(a, b map[string][]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, av := range a {
+		bv, ok := b[k]
+		if !ok || len(av) != len(bv) {
+			return false
+		}
+		for i := range av {
+			if av[i] != bv[i] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (e *exec) requestContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	timeout := e.sess.timeout
+	if timeout <= 0 {
+		return ctx, func() {}
+	}
+	if dl, ok := ctx.Deadline(); ok && !dl.After(time.Now().Add(timeout)) {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, timeout)
+}
+
+func (e *exec) recordExchange(sr *StepResult, method, full string, started time.Time, headers map[string][]string, body []byte, reply Reply, callErr error) {
+	exch := &Exchange{
+		Started: started, Method: method, URL: full, Status: reply.Status, Duration: reply.Duration,
+		Endpoint: callName(callFile(e), sr.Line, method, full),
+	}
+	if callErr != nil {
+		exch.Error = callErr.Error()
+	}
+	sr.HTTP = exch
+	if e.opt.LoadMode && e.opt.Depth == 0 {
+		e.held = &exchangeHold{ex: exch, reqH: headers, reqB: body, resH: reply.Header, resB: reply.Body}
+		e.observe(exch)
+		return
+	}
+	exch.RequestHeaders = e.sess.out.headers(headers)
+	exch.RequestBody = e.sess.out.body(body)
+	if callErr == nil {
+		exch.ResponseHeaders = e.sess.out.headers(reply.Header)
+		exch.ResponseBody = e.sess.out.body(reply.Body)
+	}
+	e.observe(exch)
+}
+
+func (e *exec) attachHeld(sr *StepResult) {
+	h := e.held
+	if h == nil || h.ex == nil || h.filled {
+		return
+	}
+	h.filled = true
+	h.ex.RequestHeaders = e.sess.out.headers(h.reqH)
+	h.ex.RequestBody = e.sess.out.body(h.reqB)
+	if h.ex.Error == "" {
+		h.ex.ResponseHeaders = e.sess.out.headers(h.resH)
+		h.ex.ResponseBody = e.sess.out.body(h.resB)
+	}
+	if sr.HTTP == nil {
+		sr.HTTP = h.ex
+	}
 }
 
 func (e *exec) methodName(name string) (string, error) {
@@ -183,6 +347,13 @@ func (e *exec) takeBody(method string) (body []byte, ctype string, err error) {
 
 // requestHeaders layers auth, content type, configured headers, and charset.
 func (e *exec) requestHeaders(ctype string, hasBody bool) (map[string][]string, error) {
+	auth, _ := e.sess.auth.header()
+	overlay, static := e.vm.StaticHeaders()
+	if p := e.prep(); p != nil && p.headersReady && static && len(overlay) == 0 && p.ctype == ctype && p.hasBody == hasBody && p.charset == e.sess.charset && p.auth == auth && sameHeader(p.srcHeaders, e.sess.headers) {
+		e.headersReused = true
+		return p.headers, nil
+	}
+	e.headersReused = false
 	headers := cloneHeader(e.sess.headers)
 	if h, ok := e.sess.auth.header(); ok && headerValue(headers, "Authorization") == "" {
 		headers = headerSet(headers, "Authorization", h)
@@ -197,7 +368,19 @@ func (e *exec) requestHeaders(ctype string, hasBody bool) (map[string][]string, 
 	for k, v := range over {
 		headers = headerValues(headers, k, v)
 	}
-	return withCharset(headers, e.sess.charset, hasBody), nil
+	headers = withCharset(headers, e.sess.charset, hasBody)
+	if p := e.prep(); p != nil && static && len(overlay) == 0 && len(over) == 0 {
+		p.headersReady = true
+		p.ctype = ctype
+		p.hasBody = hasBody
+		p.charset = e.sess.charset
+		p.auth = auth
+		p.srcHeaders = cloneHeader(e.sess.headers)
+		p.headers = headers
+	} else if p := e.prep(); p != nil {
+		p.headersReady = false
+	}
+	return headers, nil
 }
 
 func (e *exec) observe(exch *Exchange) {

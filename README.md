@@ -37,6 +37,7 @@ On an Apple M4, one process held 12,436 requests/s for 30 seconds on a local `GE
 | Spec | `gi spec` from the spec directory | write the steps | write the script |
 | Mock | the same file | your own server | your own server |
 | Load | the same file, soak and spike together, split across machines with `--part` | no load run | a second script |
+| Measured | 12,436/s on `GET /hello`, 100 users, 30s. 35,160/s on `GET /catalog`, 10 users, 10s | no load run | 14,045/s and 26,064/s on those same runs |
 | Try it | `brew install`, then `gi demo` | write the steps | write the script |
 
 For example, `examples/users.feature` creates a user and reads it back:
