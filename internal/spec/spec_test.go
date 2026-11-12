@@ -644,6 +644,52 @@ func noteHas(result Result, text string) bool {
 	return false
 }
 
+func TestResponseExampleAndEnumArePinned(t *testing.T) {
+	result := compileSpec(t, `
+### User Story 1 - Pay (Priority: P1)
+
+**Acceptance Scenarios**:
+
+1. **Given** an open order, **When** the client pays it, **Then** status 200
+`, `
+openapi: 3.0.3
+paths:
+  /orders/{id}/pay:
+    post:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, example: ord_1 }
+      responses:
+        '200':
+          description: Paid
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, totalCents, code]
+                properties:
+                  status: { type: string, example: paid }
+                  totalCents: { type: integer, example: 2500 }
+                  code: { type: string, enum: [already_paid] }
+`)
+	if len(result.Files) != 1 {
+		t.Fatalf("files: %+v", result.Files)
+	}
+	text, err := os.ReadFile(result.Files[0].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(text)
+	if !strings.Contains(got, "status: 'paid'") || !strings.Contains(got, "totalCents: 2500") || !strings.Contains(got, "code: 'already_paid'") {
+		t.Fatalf("feature:\n%s", got)
+	}
+	if strings.Contains(got, "status: '#string'") || strings.Contains(got, "totalCents: '#number'") {
+		t.Fatalf("example stayed a type marker:\n%s", got)
+	}
+}
+
 func TestAgentCommandsNameTheLoop(t *testing.T) {
 	root := filepath.Join("..", "..", "sdd")
 	for _, path := range []string{

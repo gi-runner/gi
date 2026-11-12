@@ -3,6 +3,7 @@ package load
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -41,6 +42,43 @@ Scenario: pending request
 	}
 	if result.Passed || result.FailedIterations != 1 || len(result.Failures) != 1 || !strings.Contains(result.Failures[0].Error, "assert failed") {
 		t.Fatalf("earlier failure hidden by cancellation: %+v", result)
+	}
+}
+
+func TestFailureSampleKeepsTheResponse(t *testing.T) {
+	f, err := feature.Parse("load.feature", `Feature: sample
+Scenario: wrong status
+* url 'http://load.example.test/orders'
+* method get
+* match response.status == 'closed'
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := `{"status":"open"}`
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    r,
+		}, nil
+	})
+	result, err := Run(t.Context(), f, Config{VUs: 1, Duration: 50 * time.Millisecond, Client: &http.Client{Transport: transport}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Passed || len(result.Failures) == 0 {
+		t.Fatalf("expected a failed sample: %+v", result)
+	}
+	var saw string
+	for _, st := range result.Failures[0].Steps {
+		if st.HTTP != nil {
+			saw = st.HTTP.ResponseBody
+		}
+	}
+	if !strings.Contains(saw, `"status": "open"`) && !strings.Contains(saw, `"status":"open"`) {
+		t.Fatalf("failure sample lost the response: %q", saw)
 	}
 }
 

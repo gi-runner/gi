@@ -226,6 +226,40 @@ func persistentSession(s session) session {
 	return s
 }
 
+func NoteLocks(su *suite.Suite, files ...*feature.File) {
+	if su == nil {
+		return
+	}
+	for _, f := range files {
+		if f != nil && fileUsesLock(f) {
+			su.UseLocks(true)
+			return
+		}
+	}
+	su.UseLocks(false)
+}
+
+func fileUsesLock(f *feature.File) bool {
+	if tagsUseLock(f.Tags) {
+		return true
+	}
+	for _, sc := range f.Scenarios {
+		if tagsUseLock(sc.Tags) {
+			return true
+		}
+	}
+	return false
+}
+
+func tagsUseLock(tags []string) bool {
+	for _, tag := range tags {
+		if _, ok := strings.CutPrefix(strings.TrimPrefix(tag, "@"), "lock="); ok {
+			return true
+		}
+	}
+	return false
+}
+
 func cancelled(sc feature.Scenario, err error) ScenarioResult {
 	return ScenarioResult{
 		Name: sc.Name, Line: sc.Line, Tags: append([]string{}, sc.Tags...),
@@ -250,6 +284,7 @@ func RunFiles(ctx context.Context, files []*feature.File, opt Options, done func
 	if opt.Suite == nil && len(files) > 0 {
 		opt.Suite = suite.Open(files[0].Path, opt.Env)
 	}
+	NoteLocks(opt.Suite, files...)
 	n := max(opt.Jobs, 1)
 	if len(files) < 2 {
 		opt.Jobs = n
@@ -344,6 +379,7 @@ func RunFile(ctx context.Context, f *feature.File, opt Options) (FileResult, err
 	if err != nil {
 		return FileResult{}, err
 	}
+	NoteLocks(opt.Suite, f)
 	out := FileResult{Path: f.Path, Name: f.Name, Started: started}
 	type job struct {
 		i  int
@@ -608,6 +644,12 @@ func (ex *exec) runSteps(res *ScenarioResult) {
 			break
 		}
 		sr := ex.runStep(ctx, st)
+		if ex.opt.LoadMode && ex.opt.Depth == 0 && sr.Passed {
+			continue
+		}
+		if ex.opt.LoadMode && ex.opt.Depth == 0 {
+			ex.attachHeld(&sr)
+		}
 		res.Steps = append(res.Steps, sr)
 		if sr.Passed {
 			continue
@@ -718,6 +760,19 @@ type exec struct {
 	embeds        []Embed
 	scenario      *feature.Scenario
 	aborted       bool
+	held          *exchangeHold
+	headersReused bool
+}
+
+// exchangeHold keeps the last load request until the scenario fails.
+// A passing iteration drops it without copying headers or bodies into the report.
+type exchangeHold struct {
+	ex     *Exchange
+	reqH   map[string][]string
+	reqB   []byte
+	resH   map[string][]string
+	resB   []byte
+	filled bool
 }
 
 type missError struct{ reason string }

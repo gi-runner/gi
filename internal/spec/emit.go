@@ -196,6 +196,11 @@ func matchKeys(s schema) []string {
 }
 
 func shape(s schema, optional bool, depth int) string {
+	if !optional {
+		if expr, ok := pinned(s); ok {
+			return expr
+		}
+	}
 	if s.Type == "array" || s.Items != nil {
 		if optional {
 			return "##array"
@@ -226,6 +231,19 @@ func shape(s schema, optional bool, depth int) string {
 		}
 	}
 	return mark(kind, optional)
+}
+
+func pinned(s schema) (string, bool) {
+	if s.Type == "object" || s.Type == "array" || s.Items != nil || len(s.Properties) > 0 {
+		return "", false
+	}
+	if s.Example != nil {
+		return literal(s.Example), true
+	}
+	if len(s.Enum) == 1 {
+		return literal(s.Enum[0]), true
+	}
+	return "", false
 }
 
 func giExpr(expr string) string {

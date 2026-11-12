@@ -8,7 +8,7 @@ gi check specs/001-payment/features
 gi test specs/001-payment/features --var baseUrl=http://127.0.0.1:8080
 ```
 
-Name the call in When: `POST /invoices/{id}/reminders`. One OpenAPI operation can omit the path. Two operations and no path are a `skipped` note. A path parameter, required header, cookie, body field, or security credential without an `example` is an `example` note, and that call is not written. `http`, `oauth2`, and `openIdConnect` use `Authorization`. An empty security requirement is public. A concrete path such as `/invoices/inv_1/reminders` supplies the example. A response schema becomes a `match`. `NEEDS CLARIFICATION` stays in the report. The scenario comment is the spec line.
+Name the call in When: `POST /invoices/{id}/reminders`. One OpenAPI operation can omit the path. Two operations and no path are a `skipped` note. A path parameter, required header, cookie, body field, or security credential without an `example` is an `example` note, and that call is not written. `http`, `oauth2`, and `openIdConnect` use `Authorization`. An empty security requirement is public. A concrete path such as `/invoices/inv_1/reminders` supplies the example. A response schema becomes a `match`. A required field with an example, or with one enum value, is matched as that value. A field without one stays a type marker such as `#string`. `NEEDS CLARIFICATION` stays in the report. The scenario comment is the spec line.
 
 `--json` prints `files` and `notes`. Exit 0 means a feature was written, 1 means nothing was written, 2 means the path is wrong.
 

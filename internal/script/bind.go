@@ -305,6 +305,15 @@ func (v *VM) storeHeaders(val sobek.Value) error {
 	return nil
 }
 
+// StaticHeaders reports configure headers when they are a fixed object.
+// A headers function is not static, because it can change on each request.
+func (v *VM) StaticHeaders() (map[string]any, bool) {
+	if v == nil || v.headerFn != nil {
+		return nil, false
+	}
+	return v.headerMap, true
+}
+
 func (v *VM) HeaderOverlay() (map[string]any, error) {
 	if v.headerFn != nil {
 		out, err := v.headerFn(sobek.Undefined())
