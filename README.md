@@ -16,9 +16,7 @@
 
 **[Documentation](https://gi-runner.github.io/gi/)** · [Specs](https://gi-runner.github.io/gi/spec/) · [Quick start](https://gi-runner.github.io/gi/quickstart/) · [Examples](examples/)
 
-One feature file holds the requests, test data, and assertions. `gi test` runs it. `gi load` runs the same file. `gi spec` writes that file from a Spec Kit, Kiro, or OpenSpec directory.
-
-[REST, GraphQL and SOAP](https://gi-runner.github.io/gi/http/) · [Browser automation](https://gi-runner.github.io/gi/browser/) · [WebSocket, gRPC and Kafka](https://gi-runner.github.io/gi/protocols/)
+One feature file holds the requests, the checks, and the load run. `gi test` runs it. `gi load` runs that same file, checks included. `gi spec` writes the file from a Spec Kit, Kiro, or OpenSpec directory.
 
 ```bash
 brew install gi-runner/tap/gi
@@ -27,20 +25,7 @@ gi demo
 
 `gi demo` checks a greeting, then runs that same check under load. [Install](https://gi-runner.github.io/gi/install/) also covers the shell script, Go, and editors.
 
-**65 MB. k6 used 150 MB** for the same local echo.
-
-On an Apple M4, one process held 12,436 requests/s for 30 seconds on a local `GET /hello` with a status check and a match. RSS was 111 MB, and every request passed. k6 2.3.0 held 14,045 requests/s on that echo with the same 100 users.
-
-| | **gi** | godog | k6 |
-| --- | --- | --- | --- |
-| Test | one feature file | Go functions | JavaScript |
-| Spec | `gi spec` from the spec directory | write the steps | write the script |
-| Mock | the same file | your own server | your own server |
-| Load | the same file, soak and spike together, split across machines with `--part` | no load run | a second script |
-| Measured | 12,436/s on `GET /hello`, 100 users, 30s. 35,160/s on `GET /catalog`, 10 users, 10s | no load run | 14,045/s and 26,064/s on those same runs |
-| Try it | `brew install`, then `gi demo` | write the steps | write the script |
-
-For example, `examples/users.feature` creates a user and reads it back:
+This file creates a user and reads it back. `gi test` and `gi load` both run it:
 
 ```gherkin
 Feature: Users API
@@ -76,4 +61,17 @@ gi test examples/users.feature --var baseUrl=http://127.0.0.1:18080 --report rep
 gi load examples/users.feature --var baseUrl=http://127.0.0.1:18080 --vus 20 --duration 30s
 ```
 
-Use your service's URL as `baseUrl` to test it instead. From `go test`, call [`gi.Test`](https://gi-runner.github.io/gi/embedding/). See [load testing](https://gi-runner.github.io/gi/load/) for workload options and [supported scope and limits](https://gi-runner.github.io/gi/limits/) before migrating existing Karate tests.
+Use your service's URL as `baseUrl` to test it instead.
+
+| | **gi** | godog | k6 |
+| --- | --- | --- | --- |
+| Test | one feature file | Go functions | JavaScript |
+| Spec | `gi spec` from the spec directory | write the steps | write the script |
+| Mock | the same file | your own server | your own server |
+| Load | the same file, checks included | no load run | a second script |
+| Catalog, 10 users, 10s | 35,160/s, 55 MB | no load run | 26,064/s, 137 MB |
+| Try it | `brew install`, then `gi demo` | write the steps | write the script |
+
+Apple M4. `GET /catalog`, status 200 and `total == 3`, every request passed. [Load testing](https://gi-runner.github.io/gi/load/) has the echo run and the other profiles. From `go test`, call [`gi.Test`](https://gi-runner.github.io/gi/embedding/). See [scope and limits](https://gi-runner.github.io/gi/limits/) before migrating existing Karate tests.
+
+[REST, GraphQL and SOAP](https://gi-runner.github.io/gi/http/) · [Browser automation](https://gi-runner.github.io/gi/browser/) · [WebSocket, gRPC and Kafka](https://gi-runner.github.io/gi/protocols/)
