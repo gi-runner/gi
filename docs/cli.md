@@ -77,7 +77,7 @@ Flags may follow the file path. Use `--` before paths beginning with `-`. `gi te
 
 ## spec
 
-`gi spec specs/001-payment` reads `spec.md` or `requirements.md`, plus `openapi.yaml` or `contracts/*.yaml`, and writes `features/*.feature`. `--json` prints the files and notes. `--out` sets the feature directory. Spec Kit, Kiro, and OpenSpec use the same command. Run `gi check` on that directory, then `gi test` with `--var baseUrl=...`. See [Specs](spec.md).
+`gi spec specs/001-payment` reads `spec.md` or `requirements.md`, plus `openapi.yaml` or `contracts/*.yaml`, and writes `features/*.feature`. `--json` prints the files and notes. The human report ends with `open:` for a requirement the run did not prove. `--out` sets the feature directory. Spec Kit, Kiro, and OpenSpec use the same command. Run `gi check` on that directory, then `gi test` with `--var baseUrl=...`. See [Specs](spec.md).
 
 ## check
 
