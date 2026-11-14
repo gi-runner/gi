@@ -131,12 +131,7 @@ func mentions(st story, id string) bool {
 }
 
 func containsID(text, id string) bool {
-	for _, found := range findIDs(text) {
-		if found == id {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(findIDs(text), id)
 }
 
 func noteLoad(b *built, file *genFile, load []string, loaded *bool) {

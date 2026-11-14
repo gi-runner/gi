@@ -1,6 +1,7 @@
 package spec
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -374,12 +375,12 @@ func resolve(text map[string]string, links []link, ran map[string]Outcome, st st
 		}
 		names[link.id] = append(names[link.id], link.scenario)
 	}
-	var order []string
+	order := make([]string, 0, len(ids))
 	for id := range ids {
 		order = append(order, id)
 	}
 	slices.SortFunc(order, compareEvidenceID)
-	var out []Evidence
+	out := make([]Evidence, 0, len(order))
 	for _, id := range order {
 		item := Evidence{ID: id, Text: text[id], Scenarios: names[id]}
 		if live {
@@ -482,8 +483,9 @@ func writeStore(dir string, st store) error {
 }
 
 func gitHead(dir string) string {
-	cmd := exec.Command("git", "-C", dir, "rev-parse", "HEAD")
-	out, err := cmd.Output()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "HEAD").Output()
 	if err != nil {
 		return ""
 	}
