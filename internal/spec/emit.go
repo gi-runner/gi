@@ -18,6 +18,13 @@ type genFile struct {
 	load              bool
 	count             int
 	clarifies         []string
+	opens             []Note
+	reqs              []genReq
+	story             string
+}
+
+type genReq struct {
+	id, text string
 }
 
 type genScene struct {
@@ -30,6 +37,16 @@ type genScene struct {
 func render(f genFile) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# gi-spec: %s\n", f.slug)
+	for _, note := range f.opens {
+		fmt.Fprintf(&b, "# gi-open: %s %s\n", note.Kind, note.Text)
+	}
+	for _, req := range f.reqs {
+		if req.text == "" {
+			fmt.Fprintf(&b, "# gi-req: %s\n", req.id)
+			continue
+		}
+		fmt.Fprintf(&b, "# gi-req: %s %s\n", req.id, req.text)
+	}
 	for _, line := range f.loadLines {
 		b.WriteString(line)
 		b.WriteByte('\n')
@@ -70,6 +87,56 @@ func writeTags(b *strings.Builder, tags []string) {
 		b.WriteString(tag)
 	}
 	b.WriteByte('\n')
+}
+
+func typeNote(name string, lines []string) (Note, bool) {
+	var found []string
+	seen := map[string]bool{}
+	for _, line := range lines {
+		for _, marker := range typeMarkers(line) {
+			if seen[marker] {
+				continue
+			}
+			seen[marker] = true
+			found = append(found, marker)
+		}
+	}
+	if len(found) == 0 {
+		return Note{}, false
+	}
+	return Note{Kind: "type", Text: name + ": " + strings.Join(found, ", ")}, true
+}
+
+func typeMarkers(line string) []string {
+	var out []string
+	rest := line
+	for {
+		i := strings.Index(rest, "'#")
+		if i < 0 {
+			return out
+		}
+		rest = rest[i+1:]
+		end := strings.IndexByte(rest, '\'')
+		if end < 0 {
+			return out
+		}
+		tok := rest[:end]
+		if typeMarker(tok) {
+			out = append(out, tok)
+		}
+		rest = rest[end+1:]
+	}
+}
+
+func typeMarker(tok string) bool {
+	body := strings.TrimPrefix(tok, "#")
+	body = strings.TrimPrefix(body, "#")
+	switch body {
+	case "string", "number", "boolean", "uuid", "object", "array", "null", "notpresent":
+		return true
+	default:
+		return strings.HasPrefix(body, "[]")
+	}
 }
 
 func sceneLines(op operation) []string {

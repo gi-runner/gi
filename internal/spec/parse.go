@@ -10,6 +10,7 @@ type doc struct {
 	title    string
 	stories  []story
 	reqs     []requirement
+	acs      []requirement
 	criteria []string
 	edges    []string
 }
@@ -23,6 +24,7 @@ type scene struct {
 	name, given, when, then string
 	file                    string
 	line                    int
+	ids                     []string
 }
 
 type requirement struct {
@@ -34,6 +36,7 @@ var (
 	userStoryRE = regexp.MustCompile(`(?i)^###\s+User Story\s+(\d+)\s+[-—–]\s+(.+)$`)
 	priorityRE  = regexp.MustCompile(`(?i)\s+\(Priority:.*\)$`)
 	frRE        = regexp.MustCompile(`(?i)^[-*]\s+\*{0,2}(FR-\d+)\*{0,2}\s*:\s*(.+)$`)
+	acRE        = regexp.MustCompile(`(?i)^[-*]\s+\*{0,2}(AC-\d+(?:-\d+)*)\*{0,2}\s*:\s*(.+)$`)
 	scRE        = regexp.MustCompile(`(?i)^[-*]\s+\*{0,2}SC-\d+\*{0,2}\s*:\s*(.+)$`)
 	reqHeadRE   = regexp.MustCompile(`(?i)^###\s+Requirement:\s+(.+)$`)
 	sceneHeadRE = regexp.MustCompile(`(?i)^####\s+Scenario:\s+(.+)$`)
@@ -100,7 +103,11 @@ func parseSpecKit(text string) doc {
 			continue
 		}
 		if fr := frRE.FindStringSubmatch(line); fr != nil {
-			d.reqs = append(d.reqs, requirement{id: fr[1], text: fr[2], clarify: clarifies(fr[2])})
+			d.reqs = append(d.reqs, requirement{id: canonID(fr[1]), text: fr[2], clarify: clarifies(fr[2])})
+			continue
+		}
+		if ac := acRE.FindStringSubmatch(line); ac != nil {
+			d.acs = append(d.acs, requirement{id: canonID(ac[1]), text: ac[2]})
 			continue
 		}
 		if sc := scRE.FindStringSubmatch(line); sc != nil {
@@ -115,6 +122,7 @@ func parseSpecKit(text string) doc {
 		}
 		if sc, ok := acceptance(line); ok {
 			sc.line = n
+			sc.ids = findIDs(line)
 			cur.scenes = append(cur.scenes, sc)
 			continue
 		}
@@ -308,4 +316,8 @@ func stripMd(s string) string {
 
 func clarifies(text string) bool {
 	return strings.Contains(strings.ToUpper(text), "NEEDS CLARIFICATION")
+}
+
+func (sc scene) criterionIDs() []string {
+	return findIDs(strings.Join(sc.ids, " ") + "\n" + sc.name + "\n" + sc.given + "\n" + sc.when + "\n" + sc.then)
 }

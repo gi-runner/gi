@@ -25,8 +25,9 @@ type Note struct {
 
 // Result is what Compile wrote and what it refused to guess.
 type Result struct {
-	Files []File `json:"files"`
-	Notes []Note `json:"notes"`
+	Files    []File     `json:"files"`
+	Notes    []Note     `json:"notes"`
+	Evidence []Evidence `json:"evidence,omitempty"`
 }
 
 // Compile reads path and writes feature files. out overrides the features directory
@@ -47,6 +48,7 @@ func Compile(path, out string) (Result, error) {
 		}
 		result.Files = append(result.Files, one.Files...)
 		result.Notes = append(result.Notes, one.Notes...)
+		result.Evidence = append(result.Evidence, one.Evidence...)
 	}
 	return result, nil
 }
@@ -91,7 +93,38 @@ func compileDir(dir, out string) (Result, error) {
 		}
 		result.Files = append(result.Files, File{Path: path, Scenarios: f.count, Load: f.load, Clarifies: f.clarifies})
 	}
+	ev, err := Load(dest)
+	if err != nil {
+		return Result{}, err
+	}
+	result.Evidence = ev
 	return result, nil
+}
+
+// ReadOpens collects the # gi-open lines written into spec features.
+func ReadOpens(paths []string) []Note {
+	var notes []Note
+	seen := map[string]bool{}
+	for _, path := range paths {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		for line := range strings.SplitSeq(string(raw), "\n") {
+			text, ok := strings.CutPrefix(strings.TrimSpace(line), "# gi-open:")
+			if !ok {
+				continue
+			}
+			text = strings.TrimSpace(text)
+			if text == "" || seen[text] {
+				continue
+			}
+			seen[text] = true
+			kind, body, _ := strings.Cut(text, " ")
+			notes = append(notes, Note{Kind: kind, Text: strings.TrimSpace(body)})
+		}
+	}
+	return notes
 }
 
 func specDirs(path string) ([]string, error) {

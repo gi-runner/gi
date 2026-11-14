@@ -89,6 +89,11 @@ components:
 `
 
 const reminderFeature = `# gi-spec: reminder
+# gi-open: edge The invoice id is unknown.
+# gi-open: clarify FR-016 System MUST send one reminder. [NEEDS CLARIFICATION: show the amount still due?]
+# gi-open: type status 201 and one reminder is sent: #number, #string
+# gi-open: load duration is 30s; the spec did not state a window
+# gi-req: FR-016 System MUST send one reminder. [NEEDS CLARIFICATION: show the amount still due?]
 # gi-load: name=spec vus=50 duration=30s
 # gi-load: threshold p95 < 200ms
 @US1 @FR-016
@@ -161,6 +166,22 @@ func TestSpecKitCompilesReminder(t *testing.T) {
 	if !strings.Contains(joined, "edge: The invoice id is unknown.") || !strings.Contains(joined, "clarify: FR-016") {
 		t.Fatalf("notes:\n%s", joined)
 	}
+	if len(result.Evidence) != 3 {
+		t.Fatalf("evidence: %+v", result.Evidence)
+	}
+	ledger := map[string]Evidence{}
+	for _, item := range result.Evidence {
+		ledger[item.ID] = item
+	}
+	if ledger["FR-016"].Status != "uncovered" {
+		t.Fatalf("FR-016: %+v", ledger["FR-016"])
+	}
+	if ledger["spec.md:9"].Status != "unexecuted" || len(ledger["spec.md:9"].Scenarios) != 1 || ledger["spec.md:9"].Scenarios[0] != "status 201 and one reminder is sent" {
+		t.Fatalf("spec.md:9: %+v", ledger["spec.md:9"])
+	}
+	if ledger["spec.md:10"].Status != "unexecuted" || len(ledger["spec.md:10"].Scenarios) != 1 || ledger["spec.md:10"].Scenarios[0] != "status 409" {
+		t.Fatalf("spec.md:10: %+v", ledger["spec.md:10"])
+	}
 
 	var n int
 	var mu sync.Mutex
@@ -220,7 +241,7 @@ paths:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(text), "@contract") || strings.Contains(string(text), "something happens") {
+	if !strings.Contains(string(text), "@contract") || strings.Contains(string(text), "Scenario: something happens") {
 		t.Fatalf("feature:\n%s", text)
 	}
 	var skipped bool
@@ -512,7 +533,7 @@ paths:
 			t.Fatalf("files %+v notes %+v", result.Files, result.Notes)
 		}
 		text := readFile(t, result.Files[0].Path)
-		if strings.Contains(text, "Authorization") || !strings.Contains(text, "/health") && !strings.Contains(text, "'health'") {
+		if strings.Contains(text, "header Authorization") || !strings.Contains(text, "/health") && !strings.Contains(text, "'health'") {
 			t.Fatalf("feature:\n%s", text)
 		}
 	})
@@ -642,6 +663,41 @@ func noteHas(result Result, text string) bool {
 		}
 	}
 	return false
+}
+
+func TestParameterRefKeepsTheExample(t *testing.T) {
+	result := compileSpec(t, `
+### User Story 1 - Remind (Priority: P1)
+
+**Acceptance Scenarios**:
+
+1. **Given** an invoice, **When** POST /invoices/{id}/reminders, **Then** status 201
+`, `
+openapi: 3.0.3
+paths:
+  /invoices/{id}/reminders:
+    post:
+      parameters:
+        - $ref: '#/components/parameters/InvoiceId'
+      responses:
+        '201': { description: ok }
+components:
+  parameters:
+    InvoiceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        example: inv_1
+`)
+	if len(result.Files) != 1 || result.Files[0].Scenarios != 1 || noteHas(result, "add example") {
+		t.Fatalf("files %+v notes %+v", result.Files, result.Notes)
+	}
+	text := readFile(t, result.Files[0].Path)
+	if !strings.Contains(text, "path 'invoices', 'inv_1', 'reminders'") {
+		t.Fatalf("feature:\n%s", text)
+	}
 }
 
 func TestResponseExampleAndEnumArePinned(t *testing.T) {

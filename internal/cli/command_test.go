@@ -421,3 +421,63 @@ func TestSpecFeatureKeepsScenarioOrder(t *testing.T) {
 		t.Fatalf("mixed jobs = %d, want %d", got, want)
 	}
 }
+
+func TestOpenRequirementsStayVisible(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pay.feature")
+	body := "# gi-spec: pay\n# gi-open: clarify FR-2 show the amount still due\nFeature: Pay\n\nScenario: ok\n  * assert true\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out := runCLI(t, "test", path)
+	if code != 0 || !strings.Contains(out, "open:\n  clarify: FR-2 show the amount still due\n") {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	fail := filepath.Join(dir, "fail.feature")
+	body = "# gi-spec: fail\nFeature: Fail\n\nScenario: charge is refused\n  * assert false\n"
+	if err := os.WriteFile(fail, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out = runCLI(t, "test", fail)
+	if code != 1 || !strings.Contains(out, "open:\n  failed: charge is refused\n") {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	plain := filepath.Join(dir, "plain.feature")
+	if err := os.WriteFile(plain, []byte("Feature: Plain\n\nScenario: ok\n  * assert true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out = runCLI(t, "test", plain)
+	if code != 0 || strings.Contains(out, "open:") {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+}
+
+func TestRequirementEvidenceStaysOpen(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pay.feature")
+	body := "# gi-req: AC-9 Payment audit event\n" +
+		"Feature: Pay\n\n" +
+		"@AC-1\n" +
+		"Scenario: paid\n" +
+		"  * assert true\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out := runCLI(t, "test", path)
+	if code != 0 || !strings.Contains(out, "open:\n  uncovered: AC-9 Payment audit event\n") || strings.Contains(out, "passing:") {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, ".gi-evidence.json"))
+	if err != nil || !strings.Contains(string(raw), `"status": "passing"`) {
+		t.Fatalf("evidence file: %v\n%s", err, raw)
+	}
+	fail := filepath.Join(dir, "dup.feature")
+	body = "Feature: Dup\n\n@AC-2\nScenario: duplicate payment\n  * assert false\n"
+	if err := os.WriteFile(fail, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out = runCLI(t, "test", fail)
+	if code != 1 || !strings.Contains(out, "open:\n  failing: AC-2 duplicate payment\n") {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+}

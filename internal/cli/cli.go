@@ -24,6 +24,7 @@ import (
 	"github.com/gi-runner/gi/internal/load"
 	"github.com/gi-runner/gi/internal/mock"
 	"github.com/gi-runner/gi/internal/report"
+	"github.com/gi-runner/gi/internal/spec"
 	"github.com/gi-runner/gi/internal/suite"
 )
 
@@ -78,6 +79,17 @@ func runTest(args []string, opt testOptions) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
+	var outcomes []spec.Outcome
+	for _, res := range features {
+		for _, sc := range res.Scenarios {
+			outcomes = append(outcomes, spec.Outcome{File: res.Path, Name: sc.Name, Passed: sc.Passed, Skipped: sc.Skipped})
+		}
+	}
+	ev, err := spec.Record(files, outcomes)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+	}
+	printOpens(append(append(spec.ReadOpens(files), failedOpens(files, features)...), spec.EvidenceNotes(ev)...))
 	if !passed {
 		return 1
 	}
@@ -106,6 +118,28 @@ func specOwned(path string) bool {
 	n, _ := f.Read(buf)
 	line, _, _ := strings.Cut(string(buf[:n]), "\n")
 	return strings.HasPrefix(strings.TrimSpace(line), "# gi-spec:")
+}
+
+func failedOpens(paths []string, features []engine.FileResult) []spec.Note {
+	owned := map[string]bool{}
+	for _, path := range paths {
+		if specOwned(path) {
+			owned[path] = true
+		}
+	}
+	var notes []spec.Note
+	for _, res := range features {
+		if !owned[res.Path] {
+			continue
+		}
+		for _, sc := range res.Scenarios {
+			if sc.Passed || sc.Skipped {
+				continue
+			}
+			notes = append(notes, spec.Note{Kind: "failed", Text: sc.Name})
+		}
+	}
+	return notes
 }
 
 func runCheck(args []string) int {

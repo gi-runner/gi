@@ -55,6 +55,7 @@ type schema struct {
 
 type contract struct {
 	schemas map[string]schema
+	params  map[string]oasParam
 }
 
 type oas struct {
@@ -62,6 +63,7 @@ type oas struct {
 	Paths      map[string]pathItem `yaml:"paths"`
 	Components struct {
 		Schemas         map[string]schema    `yaml:"schemas"`
+		Parameters      map[string]oasParam  `yaml:"parameters"`
 		SecuritySchemes map[string]oasScheme `yaml:"securitySchemes"`
 	} `yaml:"components"`
 }
@@ -84,6 +86,7 @@ type pathItem struct {
 }
 
 type oasParam struct {
+	Ref      string  `yaml:"$ref"`
 	Name     string  `yaml:"name"`
 	In       string  `yaml:"in"`
 	Required bool    `yaml:"required"`
@@ -124,7 +127,7 @@ func readContracts(dir string) ([]operation, error) {
 		if err := yaml.Unmarshal(text, &doc); err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
-		c := contract{schemas: doc.Components.Schemas}
+		c := contract{schemas: doc.Components.Schemas, params: doc.Components.Parameters}
 		for _, op := range c.operations(doc) {
 			key := op.method + " " + op.path
 			if seen[key] {
@@ -233,7 +236,11 @@ func (c contract) operation(method, path string, shared []oasParam, raw *oasOp, 
 	}
 	params := append(append([]oasParam{}, shared...), raw.Parameters...)
 	for _, p := range params {
-		op.params = append(op.params, c.param(p))
+		got := c.param(p)
+		if got.name == "" {
+			continue
+		}
+		op.params = append(op.params, got)
 	}
 	if raw.RequestBody != nil {
 		op.bodyRequired = raw.RequestBody.Required
@@ -270,6 +277,7 @@ func (c contract) operation(method, path string, shared []oasParam, raw *oasOp, 
 }
 
 func (c contract) param(p oasParam) parameter {
+	p = c.derefParam(p, map[string]bool{})
 	out := parameter{name: p.Name, in: p.In, required: p.Required || p.In == "path", example: p.Example}
 	if p.Schema != nil {
 		concrete := c.concrete(*p.Schema)
@@ -279,6 +287,40 @@ func (c contract) param(p oasParam) parameter {
 		if out.example == nil && len(concrete.Enum) > 0 {
 			out.example = concrete.Enum[0]
 		}
+	}
+	return out
+}
+
+func (c contract) derefParam(p oasParam, seen map[string]bool) oasParam {
+	name, ok := strings.CutPrefix(p.Ref, "#/components/parameters/")
+	if !ok || seen[name] {
+		return p
+	}
+	base, found := c.params[name]
+	if !found {
+		return p
+	}
+	seen[name] = true
+	return mergeParam(c.derefParam(base, seen), p)
+}
+
+func mergeParam(base, over oasParam) oasParam {
+	out := base
+	out.Ref = ""
+	if over.Name != "" {
+		out.Name = over.Name
+	}
+	if over.In != "" {
+		out.In = over.In
+	}
+	if over.Required {
+		out.Required = true
+	}
+	if over.Example != nil {
+		out.Example = over.Example
+	}
+	if over.Schema != nil {
+		out.Schema = over.Schema
 	}
 	return out
 }

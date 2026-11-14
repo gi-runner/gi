@@ -14,18 +14,24 @@ type built struct {
 
 func build(d doc, ops []operation) built {
 	var b built
+	var global []Note
 	for _, edge := range d.edges {
-		b.notes = append(b.notes, Note{Kind: "edge", Text: edge})
+		note := Note{Kind: "edge", Text: edge}
+		b.notes = append(b.notes, note)
+		global = append(global, note)
 	}
 	for _, req := range d.reqs {
 		if req.clarify {
-			b.notes = append(b.notes, Note{Kind: "clarify", Text: req.id + " " + req.text})
+			note := Note{Kind: "clarify", Text: req.id + " " + req.text}
+			b.notes = append(b.notes, note)
+			global = append(global, note)
 		}
 	}
 	used := map[string]bool{}
 	load := loadLines(d.criteria)
 	loaded := false
 	slugs := map[string]int{}
+	var unplaced []Note
 	for _, st := range d.stories {
 		file, notes, consumed := storyFile(d, st, ops)
 		for key := range consumed {
@@ -33,22 +39,104 @@ func build(d doc, ops []operation) built {
 		}
 		b.notes = append(b.notes, notes...)
 		if file.count == 0 {
+			unplaced = append(unplaced, notes...)
 			continue
 		}
 		file.slug = uniqueSlug(slugs, file.slug)
+		file.opens = append([]Note{}, notes...)
 		noteLoad(&b, &file, load, &loaded)
-		file.text = render(file)
 		b.files = append(b.files, file)
 	}
 	rest, extra := contractFile(d, ops, used)
 	b.notes = append(b.notes, extra...)
 	if rest.count > 0 {
 		rest.slug = uniqueSlug(slugs, rest.slug)
+		rest.opens = append([]Note{}, extra...)
 		noteLoad(&b, &rest, load, &loaded)
-		rest.text = render(rest)
 		b.files = append(b.files, rest)
+	} else {
+		unplaced = append(unplaced, extra...)
+	}
+	if len(b.files) > 0 {
+		head := append(append([]Note{}, global...), unplaced...)
+		b.files[0].opens = append(head, b.files[0].opens...)
+	}
+	placeReqs(b.files, d)
+	for i := range b.files {
+		b.files[i].text = render(b.files[i])
 	}
 	return b
+}
+
+func placeReqs(files []genFile, d doc) {
+	if len(files) == 0 {
+		return
+	}
+	var reqs []genReq
+	seen := map[string]bool{}
+	add := func(id, text string) {
+		id = canonID(id)
+		if id == "" || seen[id] {
+			return
+		}
+		seen[id] = true
+		reqs = append(reqs, genReq{id: id, text: strings.TrimSpace(text)})
+	}
+	for _, req := range d.reqs {
+		add(req.id, req.text)
+	}
+	for _, req := range d.acs {
+		add(req.id, req.text)
+	}
+	for _, st := range d.stories {
+		for _, id := range findIDs(st.title + "\n" + st.body) {
+			add(id, "")
+		}
+		for _, sc := range st.scenes {
+			for _, id := range sc.criterionIDs() {
+				add(id, "")
+			}
+		}
+	}
+	for _, req := range reqs {
+		at := fileFor(files, d, req.id)
+		files[at].reqs = append(files[at].reqs, req)
+	}
+}
+
+func fileFor(files []genFile, d doc, id string) int {
+	for _, st := range d.stories {
+		if !mentions(st, id) {
+			continue
+		}
+		for i, file := range files {
+			if file.story == st.id {
+				return i
+			}
+		}
+	}
+	return 0
+}
+
+func mentions(st story, id string) bool {
+	if containsID(st.title+"\n"+st.body, id) {
+		return true
+	}
+	for _, sc := range st.scenes {
+		if containsID(strings.Join(sc.criterionIDs(), " "), id) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsID(text, id string) bool {
+	for _, found := range findIDs(text) {
+		if found == id {
+			return true
+		}
+	}
+	return false
 }
 
 func noteLoad(b *built, file *genFile, load []string, loaded *bool) {
@@ -58,11 +146,13 @@ func noteLoad(b *built, file *genFile, load []string, loaded *bool) {
 	file.loadLines = load
 	file.load = true
 	*loaded = true
-	b.notes = append(b.notes, Note{Kind: "load", Text: "duration is 30s; the spec did not state a window"})
+	note := Note{Kind: "load", Text: "duration is 30s; the spec did not state a window"}
+	b.notes = append(b.notes, note)
+	file.opens = append(file.opens, note)
 }
 
 func storyFile(d doc, st story, ops []operation) (genFile, []Note, map[string]bool) {
-	file := genFile{slug: slug(st.title), title: st.title, tags: storyTags(d, st)}
+	file := genFile{slug: slug(st.title), title: st.title, tags: storyTags(d, st), story: st.id}
 	if file.title == "" {
 		file.title = "API"
 	}
@@ -90,7 +180,11 @@ func storyFile(d doc, st story, ops []operation) (genFile, []Note, map[string]bo
 			notes = append(notes, Note{Kind: "example", Text: located(sc, msg)})
 			continue
 		}
-		file.scenarios = append(file.scenarios, genScene{name: uniqueName(names, sceneName(sc)), where: specWhere(sc), lines: sceneLines(op)})
+		scene := genScene{tags: sc.criterionIDs(), name: uniqueName(names, sceneName(sc)), where: specWhere(sc), lines: sceneLines(op)}
+		file.scenarios = append(file.scenarios, scene)
+		if note, ok := typeNote(scene.name, scene.lines); ok {
+			notes = append(notes, note)
+		}
 	}
 	file.count = len(file.scenarios)
 	return file, notes, used
@@ -118,11 +212,15 @@ func contractFile(d doc, ops []operation, used map[string]bool) (genFile, []Note
 		if name == "" {
 			name = strings.ToUpper(op.method) + " " + op.path
 		}
-		file.scenarios = append(file.scenarios, genScene{
+		scene := genScene{
 			tags:  []string{"contract"},
 			name:  uniqueName(names, strings.Join(strings.Fields(name), " ")),
 			lines: sceneLines(op.clone()),
-		})
+		}
+		file.scenarios = append(file.scenarios, scene)
+		if note, ok := typeNote(scene.name, scene.lines); ok {
+			notes = append(notes, note)
+		}
 	}
 	file.count = len(file.scenarios)
 	return file, notes

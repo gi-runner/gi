@@ -28,7 +28,7 @@ func newSpecCommand(code *int) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&out, "out", "", "Feature directory (default: <spec>/features)")
-	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print the files and notes as JSON")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "Print the files, notes, and evidence as JSON")
 	return cmd
 }
 
@@ -49,12 +49,20 @@ func runSpec(path, out string, jsonOut bool) int {
 		for _, file := range result.Files {
 			fmt.Printf("wrote %s (%d scenarios)\n", file.Path, file.Scenarios)
 		}
-		for _, note := range result.Notes {
-			fmt.Printf("%s: %s\n", note.Kind, note.Text)
-		}
+		printOpens(append(result.Notes, spec.EvidenceNotes(result.Evidence)...))
 	}
 	if len(result.Files) == 0 {
 		return 1
 	}
 	return 0
+}
+
+func printOpens(notes []spec.Note) {
+	if len(notes) == 0 {
+		return
+	}
+	fmt.Println("open:")
+	for _, note := range notes {
+		fmt.Printf("  %s: %s\n", note.Kind, note.Text)
+	}
 }
