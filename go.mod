@@ -5,7 +5,7 @@ go 1.27.2
 require (
 	github.com/antchfx/xmlquery v1.5.2
 	github.com/antchfx/xpath v1.3.9
-	github.com/chromedp/cdproto v0.159.2
+	github.com/chromedp/cdproto v0.160.6
 	github.com/chromedp/chromedp v0.23.0
 	github.com/coder/websocket v1.8.15
 	github.com/cucumber/gherkin/go/v42 v42.0.1
